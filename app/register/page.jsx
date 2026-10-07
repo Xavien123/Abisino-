@@ -26,8 +26,8 @@ export default function Register() {
       if (!res.ok) {
         setError(data.error || 'Etwas ist schiefgelaufen.');
       } else {
-        // Bei Erfolg direkt in die Lobby schicken
-        router.push('/spiele');
+        // Zur Code-Eingabe weiterleiten
+        router.push('/verify');
       }
     } catch (err) {
       setError('Verbindungsfehler zum Casino-Server.');
