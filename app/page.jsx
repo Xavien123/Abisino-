@@ -12,7 +12,7 @@ export default function Home() {
         <Link href="/login" className="btn-premium">
           VIP Zugang
         </Link>
-        <Link href="/roulette" className="btn-ghost">
+        <Link href="/spiele" className="btn-ghost">
           Spiele ansehen
         </Link>
       </div>
