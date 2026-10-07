@@ -1,4 +1,3 @@
-# Stage 1: Dependencies & Build
 FROM node:18-alpine AS builder
 WORKDIR /app
 
@@ -30,6 +29,3 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/server.js ./server.js
 
 EXPOSE 3000
-
-# Führt vor Start die DB-Migrationen durch und startet den Custom Server
-CMD npx prisma migrate deploy && node server.js
