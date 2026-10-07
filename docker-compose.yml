@@ -1,1 +1,34 @@
+version: '3.8'
 
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: abi_casino_db
+    environment:
+      POSTGRES_USER: casino_admin
+      POSTGRES_PASSWORD: casino_password
+      POSTGRES_DB: abi_casino
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U casino_admin -d abi_casino"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: abi_casino_app
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://casino_admin:casino_password@db:5432/abi_casino?schema=public
+      - NODE_ENV=production
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
