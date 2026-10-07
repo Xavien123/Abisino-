@@ -5,15 +5,16 @@ export default function Home() {
     <div className="main-container">
       <h1 className="luxury-title">ABI CASINO</h1>
       <p className="luxury-subtitle">
-        Willkommen in der absoluten Spitzenklasse. Erlebe die Atmosphäre eines 5-Sterne-Casinos in Las Vegas. Exklusiv, diskret und voller Spannung. Dein Platz am VIP-Tisch erwartet dich.
+        Willkommen in der absoluten Spitzenklasse. Erlebe die Atmosphäre eines 5-Sterne-Casinos in Las Vegas. 
+        Registriere dich jetzt und erhalte dein exklusives Startguthaben.
       </p>
       
       <div className="button-group">
-        <Link href="/login" className="btn-premium">
-          VIP Zugang
+        <Link href="/register" className="btn-premium">
+          VIP Zugang sichern (+ 2 AC)
         </Link>
-        <Link href="/spiele" className="btn-ghost">
-          Spiele ansehen
+        <Link href="/login" className="btn-ghost">
+          Bereits Mitglied? Login
         </Link>
       </div>
     </div>
