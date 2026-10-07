@@ -1,1 +1,107 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
 
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  PLAYER
+}
+
+model User {
+  id           String   @id @default(uuid())
+  username     String   @unique // Wird im Backend lowercase erzwungen
+  passwordHash String
+  role         Role     @default(PLAYER)
+  
+  // Anti-Multi-Account Protection (Hash aus IP + Browser Fingerprint)
+  deviceHash   String?  @unique 
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  wallet       Wallet?
+  
+  // Relationen für Invites und Audits
+  usedInvite     InviteToken?  @relation("UsedInvite")
+  createdInvites InviteToken[] @relation("CreatedInvites")
+  auditLogs      AuditLog[]
+}
+
+model Wallet {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  
+  // WICHTIG: Keine Floats! 200 Units = 2.00 AC
+  balance   Int      @default(200) 
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Globaler Banktresor (Singleton, immer ID 1)
+model Vault {
+  id               Int      @id @default(1)
+  balance          Int      @default(10000000) // Startkapital der Bank: 100.000,00 AC
+  maxLiableAmount  Int      @default(500000)   // Maximale Verlusttoleranz für Insolvenzschutz
+  updatedAt        DateTime @updatedAt
+}
+
+enum TxType {
+  BET
+  WIN
+  ADMIN_MINT
+  ADMIN_BURN
+  ADMIN_TRANSFER
+}
+
+// Immutable Transaction Ledger
+model Transaction {
+  id          String   @id @default(uuid())
+  userId      String?  
+  amount      Int      // Absoluter Wert in Units
+  type        TxType
+  description String?
+  referenceId String?  // z.B. GameRoom ID oder Audit ID
+  createdAt   DateTime @default(now())
+}
+
+model InviteToken {
+  id        String    @id @default(uuid())
+  token     String    @unique // Kryptografischer Token (z.B. Hex-String)
+  
+  createdBy String
+  admin     User      @relation("CreatedInvites", fields: [createdBy], references: [id])
+  
+  usedBy    String?   @unique
+  user      User?     @relation("UsedInvite", fields: [usedBy], references: [id])
+  
+  usedAt    DateTime?
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+}
+
+// Speichert den finalen Zustand von gespielten Runden (für History/Replays)
+model GameRoom {
+  id        String   @id @default(uuid())
+  type      String   // POKER, ROULETTE, BLACKJACK, CRAPS, SLOTS
+  state     Json     // Letzter bekannter Status als Snapshot
+  status    String   // WAITING, IN_PROGRESS, FINISHED
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Unlöschbares Protokoll für alle Admin-Aktionen
+model AuditLog {
+  id        String   @id @default(uuid())
+  adminId   String
+  admin     User     @relation(fields: [adminId], references: [id])
+  action    String   // z.B. "MINT_COINS", "REVOKE_INVITE"
+  details   Json     // Metadaten der Aktion
+  createdAt DateTime @default(now())
+}
