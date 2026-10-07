@@ -1,1 +1,27 @@
-
+{
+  "name": "abi-casino",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "node server.js",
+    "build": "next build",
+    "start": "node server.js",
+    "prisma:push": "prisma db push"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.0.0",
+    "bcrypt": "^5.1.0",
+    "framer-motion": "^10.12.16",
+    "jsonwebtoken": "^9.0.0",
+    "lucide-react": "^0.260.0",
+    "next": "^13.4.7",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "socket.io": "^4.7.1",
+    "socket.io-client": "^4.7.1",
+    "tailwindcss": "^3.3.2"
+  },
+  "devDependencies": {
+    "prisma": "^5.0.0"
+  }
+}
