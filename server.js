@@ -1,31 +1,37 @@
-FROM node:18-alpine AS builder
-WORKDIR /app
+const { createServer } = require('http');
+const { parse } = require('url');
+const next = require('next');
+const { Server } = require('socket.io');
 
-# Prisma benötigt OpenSSL in Alpine
-RUN apk add --no-cache openssl
+const dev = process.env.NODE_ENV !== 'production';
+const app = next({ dev });
+const handle = app.getRequestHandler();
 
-COPY package*.json ./
-COPY prisma ./prisma/
-RUN npm ci
+app.prepare().then(() => {
+  const server = createServer((req, res) => {
+    const parsedUrl = parse(req.url, true);
+    handle(req, res, parsedUrl);
+  });
 
-COPY . .
-# Prisma Client generieren
-RUN npx prisma generate
+  const io = new Server(server, {
+    cors: {
+      origin: "*",
+      methods: ["GET", "POST"]
+    }
+  });
 
-# Next.js Build
-RUN npm run build
+  io.on('connection', (socket) => {
+    console.log('Ein Spieler hat das Casino betreten');
+    
+    socket.on('disconnect', () => {
+      console.log('Ein Spieler hat das Casino verlassen');
+    });
+  });
 
-# Stage 2: Production Image
-FROM node:18-alpine AS runner
-WORKDIR /app
+  const PORT = process.env.PORT || 3000;
+  server.listen(PORT, (err) => {
+    if (err) throw err;
+    console.log(`> Casino Server läuft auf Port ${PORT}`);
+  });
+});
 
-RUN apk add --no-cache openssl
-
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/server.js ./server.js
-
-EXPOSE 3000
