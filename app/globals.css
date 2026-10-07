@@ -1,8 +1,102 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@300;400;600&display=swap');
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  background-color: #0f172a; /* Dunkler Casino-Hintergrund */
-  color: white;
+  /* Tiefes, mattes Las-Vegas-Grün (Samt-Optik) */
+  background-color: #0a140f;
+  background-image: radial-gradient(circle at 50% 0%, #152b1e 0%, #0a140f 70%);
+  color: #f0f0f0;
+  font-family: 'Montserrat', sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
 }
+
+.main-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 90vh;
+  text-align: center;
+  padding: 40px 20px;
+}
+
+/* Die luxuriöse Überschrift */
+.luxury-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 5rem;
+  font-weight: 700;
+  letter-spacing: 4px;
+  /* Edler Gold-Gradient */
+  background: linear-gradient(to bottom, #fef5c6, #d4af37, #996515);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  margin-bottom: 25px;
+  text-shadow: 0px 15px 35px rgba(212, 175, 55, 0.2);
+}
+
+.luxury-subtitle {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1.2rem;
+  font-weight: 300;
+  color: #c0ccc4;
+  max-width: 700px;
+  line-height: 1.9;
+  margin-bottom: 60px;
+  letter-spacing: 1px;
+}
+
+.button-group {
+  display: flex;
+  gap: 30px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* Der goldene VIP Button */
+.btn-premium {
+  background: linear-gradient(135deg, #bf953f 0%, #fcf6ba 50%, #b38728 100%);
+  color: #060c09;
+  padding: 20px 60px;
+  border-radius: 4px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 1.1rem;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  transition: all 0.4s ease;
+  border: 1px solid #fcf6ba;
+  box-shadow: 0 10px 30px rgba(191, 149, 63, 0.25);
+}
+
+.btn-premium:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 15px 40px rgba(191, 149, 63, 0.5);
+  background: linear-gradient(135deg, #fcf6ba 0%, #bf953f 50%, #aa771c 100%);
+}
+
+/* Der elegante durchsichtige Button */
+.btn-ghost {
+  background: rgba(255, 255, 255, 0.02);
+  color: #d4af37;
+  padding: 20px 60px;
+  border-radius: 4px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 1.1rem;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  transition: all 0.4s ease;
+  backdrop-filter: blur(10px);
+}
+
+.btn-ghost:hover {
+  background: rgba(212, 175, 55, 0.08);
+  border: 1px solid #d4af37;
+  transform: translateY(-5px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
