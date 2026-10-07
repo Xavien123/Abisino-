@@ -1,38 +1,97 @@
-import Link from 'next/link';
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Montserrat:wght@400;600&display=swap');
 
-export default function Home() {
-  return (
-    <div className="min-h-screen bg-slate-900 text-white font-sans flex flex-col">
-      {/* Hero Section */}
-      <main className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-gradient-to-b from-slate-800 to-slate-900">
-        <h1 className="text-5xl md:text-7xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-yellow-600 mb-6 drop-shadow-lg">
-          Willkommen im Abi Casino
-        </h1>
-        <p className="text-xl md:text-2xl text-slate-300 mb-12 max-w-2xl">
-          Erlebe Spannung und Nervenkitzel. Melde dich an und spiele mit!
-        </p>
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
-        {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row gap-6">
-          <Link 
-            href="/login" 
-            className="px-8 py-4 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold rounded-full text-lg shadow-[0_0_15px_rgba(245,158,11,0.5)] transition-all transform hover:scale-105"
-          >
-            Jetzt Anmelden
-          </Link>
-          <Link 
-            href="/roulette" 
-            className="px-8 py-4 bg-slate-700 hover:bg-slate-600 border border-slate-500 text-white font-bold rounded-full text-lg transition-all transform hover:scale-105"
-          >
-            Spiele ansehen
-          </Link>
-        </div>
-      </main>
-
-      {/* Footer (optional, für den Casino-Look) */}
-      <footer className="py-6 text-center text-slate-500 text-sm border-t border-slate-800">
-        &copy; {new Date().getFullYear()} Abi Casino. Viel Glück!
-      </footer>
-    </div>
-  );
+body {
+  /* Tiefschwarzer Hintergrund mit einem echten Casino-Bild darüber */
+  background-color: #050505;
+  background-image: linear-gradient(rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.9)), url('https://images.unsplash.com/photo-1596838132731-3301c3fd4317?auto=format&fit=crop&w=2000&q=80');
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  color: #fff;
+  font-family: 'Montserrat', sans-serif;
+  min-height: 100vh;
 }
+
+/* Dein kleines Menü oben links etwas aufhübschen */
+nav, header, div.flex {
+  background: rgba(0, 0, 0, 0.5);
+  border-bottom: 1px solid #d4af37;
+  padding: 10px;
+}
+
+.main-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 80vh;
+  text-align: center;
+  padding: 20px;
+}
+
+.gold-title {
+  font-family: 'Cinzel', serif;
+  font-size: 4rem;
+  background: linear-gradient(to right, #bf953f, #fcf6ba, #b38728, #fbf5b7, #aa771c);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  margin-bottom: 20px;
+  text-shadow: 0px 4px 20px rgba(212, 175, 55, 0.2);
+}
+
+.subtitle {
+  font-size: 1.2rem;
+  color: #e0e0e0;
+  margin-bottom: 40px;
+  max-width: 600px;
+  line-height: 1.6;
+}
+
+.button-group {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.btn-gold {
+  background: linear-gradient(135deg, #bf953f 0%, #fcf6ba 50%, #b38728 100%);
+  color: #000;
+  padding: 15px 40px;
+  border-radius: 50px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 1.1rem;
+  text-transform: uppercase;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(212, 175, 55, 0.4);
+}
+
+.btn-gold:hover {
+  transform: translateY(-3px) scale(1.05);
+  box-shadow: 0 8px 25px rgba(212, 175, 55, 0.6);
+}
+
+.btn-outline {
+  background: rgba(0, 0, 0, 0.5);
+  color: #d4af37;
+  padding: 15px 40px;
+  border-radius: 50px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 1.1rem;
+  text-transform: uppercase;
+  border: 2px solid #d4af37;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(5px);
+}
+
+.btn-outline:hover {
+  background: #d4af37;
+  color: #000;
+  transform: translateY(-3px);
+    }
+
