@@ -15,7 +15,7 @@ export default function Login() {
     // Für jetzt leiten wir dich direkt zum neuen Automaten weiter, 
     // damit du das Design testen kannst!
     
-    router.push('/lobby'); // Leitet dich sofort auf die Spiele-Seite um
+    router.push('/spiele'); // Leitet dich sofort auf die Spiele-Seite um
   };
 
   return (
