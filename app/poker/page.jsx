@@ -3,19 +3,10 @@ import { useState } from 'react';
 import Link from 'next/link';
 
 export default function RealMultiplayerHoldem() {
-  // Du startest als einziger Spieler am Tisch (Keine Bots mehr!)
   const [players, setPlayers] = useState([
     { 
-      id: 'p1', 
-      name: 'Du (Hero)', 
-      avatar: '🧑‍💼', 
-      balance: 1250.00, 
-      currentBet: 0, 
-      status: 'WAITING', 
-      isTurn: false, 
-      position: 'bottom', 
-      role: 'SB', 
-      cards: [] 
+      id: 'p1', name: 'Du (Hero)', avatar: '🧑‍💼', balance: 1250.00, currentBet: 0, 
+      status: 'WAITING', isTurn: false, position: 'bottom', role: 'SB', cards: [] 
     }
   ]);
   
@@ -24,21 +15,45 @@ export default function RealMultiplayerHoldem() {
   const [phase, setPhase] = useState('LOBBY'); // LOBBY, PREFLOP, FLOP, TURN, RIVER, SHOWDOWN
   const [currentCallAmount, setCurrentCallAmount] = useState(50);
   const [raiseAmount, setRaiseAmount] = useState(100);
+  const [showdownMessage, setShowdownMessage] = useState('');
   
   const hero = players.find(p => p.id === 'p1');
   const isWaitingForPlayers = players.length < 2;
 
-  // --- NUR ZUM TESTEN DES NEUEN DESIGNS ---
+  // DEV-Funktion: Startet einen simulierten Tisch
   const devAddPlayerAndStart = () => {
     setPlayers([
-      { ...hero, status: 'ACTIVE', isTurn: true, cards: [{ suit: '♠', value: 'A' }, { suit: '♥', value: 'K' }], currentBet: 25 },
-      { id: 'p2', name: 'RealPlayer_99', avatar: '👤', balance: 2000.00, currentBet: 50, status: 'ACTIVE', isTurn: false, position: 'top', role: 'BB', cards: [{ isHidden: true }, { isHidden: true }] }
+      { id: 'p1', name: 'Du (Hero)', avatar: '🧑‍💼', balance: 1225.00, currentBet: 25, status: 'ACTIVE', isTurn: true, position: 'bottom', role: 'SB', cards: [{ suit: '♠', value: 'A' }, { suit: '♥', value: 'K' }] },
+      { id: 'p2', name: 'RealPlayer_99', avatar: '👤', balance: 1950.00, currentBet: 50, status: 'ACTIVE', isTurn: false, position: 'top', role: 'BB', cards: [{ isHidden: true }, { isHidden: true }] }
     ]);
     setPot(75);
+    setCurrentCallAmount(50);
+    setRaiseAmount(100);
+    setCommunityCards([]);
     setPhase('PREFLOP');
+    setShowdownMessage('');
   };
 
-  // Einfache Demo-Logik, um die saubere Positionierung des Flops zu zeigen
+  // Setzt den Tisch für die nächste Hand zurück
+  const resetHand = (winnerId, winAmount) => {
+    setPlayers(prev => prev.map(p => {
+      let newBal = p.balance;
+      if (p.id === winnerId) newBal += winAmount;
+      return { 
+        ...p, 
+        currentBet: 0, 
+        isTurn: p.id === 'p1', // Hero fängt nächste Runde an
+        cards: p.id === 'p1' ? [{ suit: '♦', value: '10' }, { suit: '♠', value: 'J' }] : [{ isHidden: true }, { isHidden: true }] // Neue Testkarten
+      };
+    }));
+    setPot(0);
+    setCommunityCards([]);
+    setCurrentCallAmount(0);
+    setPhase('PREFLOP');
+    setShowdownMessage('');
+  };
+
+  // Steuert den Ablauf der Karten
   const nextPhase = () => {
     if (phase === 'PREFLOP') {
       setPhase('FLOP');
@@ -53,14 +68,67 @@ export default function RealMultiplayerHoldem() {
     } else if (phase === 'TURN') {
       setPhase('RIVER');
       setCommunityCards(prev => [...prev, { suit: '♠', value: 'A', isHidden: false }]);
+    } else if (phase === 'RIVER') {
+      // --- SHOWDOWN LOGIK ---
+      setPhase('SHOWDOWN');
+      
+      // 1. Gegnerische Karten aufdecken
+      setPlayers(prev => prev.map(p => {
+        if (p.id === 'p2') return { ...p, cards: [{ suit: '♥', value: 'Q' }, { suit: '♦', value: 'Q' }] };
+        return p;
+      }));
+
+      // 2. Gewinner ermitteln (Für diese Demo gewinnt Hero mit einer Straße)
+      // Später läuft diese Logik über deinen Server (Supabase Edge Functions)
+      setTimeout(() => {
+        const winAmount = pot;
+        setShowdownMessage(`🎉 DU GEWINNST ${winAmount.toFixed(2)} AC MIT EINER STRASSE! 🎉`);
+        
+        // 3. Pot ausschütten und Hand nach 4 Sekunden neustarten
+        setTimeout(() => {
+          resetHand('p1', winAmount);
+        }, 4000);
+      }, 1000);
     }
   };
 
   const handleAction = (actionType) => {
-    // In der echten Version schickst du hier ein Event an Supabase
+    let newPlayers = [...players];
+    let heroIndex = newPlayers.findIndex(p => p.id === 'p1');
+    let currentPot = pot;
+
+    if (actionType === 'FOLD') {
+      // Wenn Hero passt, gewinnt der Gegner sofort
+      setShowdownMessage('DU HAST GEPASST. GEGNER GEWINNT.');
+      setPhase('SHOWDOWN');
+      setTimeout(() => resetHand('p2', currentPot), 3000);
+      return;
+    } 
+    
+    if (actionType === 'CALL') {
+      const callCost = currentCallAmount - newPlayers[heroIndex].currentBet;
+      if (callCost > 0) {
+        newPlayers[heroIndex].balance -= callCost;
+        newPlayers[heroIndex].currentBet = currentCallAmount;
+        currentPot += callCost;
+        setPot(currentPot);
+      }
+    } 
+    
+    if (actionType === 'RAISE') {
+      const raiseCost = raiseAmount - newPlayers[heroIndex].currentBet;
+      newPlayers[heroIndex].balance -= raiseCost;
+      newPlayers[heroIndex].currentBet = raiseAmount;
+      setCurrentCallAmount(raiseAmount);
+      currentPot += raiseCost;
+      setPot(currentPot);
+    }
+
+    setPlayers(newPlayers);
     nextPhase(); 
   };
 
+  // UI-Komponente für die Karten
   const Card = ({ card, size = 'normal', delay = 0 }) => {
     if (!card) return null;
     const isRed = card.suit === '♥' || card.suit === '♦';
@@ -86,66 +154,37 @@ export default function RealMultiplayerHoldem() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Oswald:wght@400;700&display=swap');
 
-        @keyframes dropIn {
-          0% { transform: translateY(-50px) scale(0.8); opacity: 0; }
-          100% { transform: translateY(0) scale(1); opacity: 1; }
-        }
+        @keyframes dropIn { 0% { transform: translateY(-50px) scale(0.8); opacity: 0; } 100% { transform: translateY(0) scale(1); opacity: 1; } }
+        @keyframes glowPulse { 0% { box-shadow: 0 0 15px #d4af37; } 50% { box-shadow: 0 0 30px #f9d71c; } 100% { box-shadow: 0 0 15px #d4af37; } }
 
-        .poker-card {
-          background: #fff; border-radius: 4px; position: relative;
-          box-shadow: 0 4px 8px rgba(0,0,0,0.5);
-          animation: dropIn 0.3s ease-out forwards;
-          font-family: 'Arial', sans-serif; font-weight: 900; border: 1px solid #ddd;
-        }
-        .card-back-pattern {
-          width: 100%; height: 100%; border-radius: 3px; border: 2px solid #fff;
-          background: repeating-linear-gradient(45deg, #0d47a1, #0d47a1 5px, #1565c0 5px, #1565c0 10px);
-        }
+        .poker-card { background: #fff; border-radius: 4px; position: relative; box-shadow: 0 4px 8px rgba(0,0,0,0.5); animation: dropIn 0.3s ease-out forwards; font-family: 'Arial', sans-serif; font-weight: 900; border: 1px solid #ddd; }
+        .card-back-pattern { width: 100%; height: 100%; border-radius: 3px; border: 2px solid #fff; background: repeating-linear-gradient(45deg, #0d47a1, #0d47a1 5px, #1565c0 5px, #1565c0 10px); }
 
-        /* Avatar & Info Styling */
-        .avatar-circle {
-          width: 60px; height: 60px; border-radius: 50%;
-          background: radial-gradient(circle, #333, #000); border: 3px solid #555;
-          display: flex; justify-content: center; align-items: center; font-size: 2rem;
-          box-shadow: 0 5px 10px rgba(0,0,0,0.6); position: relative; z-index: 10;
-        }
-        .player-info {
-          background: rgba(0,0,0,0.85); border: 1px solid #d4af37; border-radius: 6px;
-          padding: 4px; text-align: center; margin-top: -10px; z-index: 11; width: 100px;
-        }
-        .role-badge {
-          position: absolute; top: -5px; right: -5px; background: #fff; color: #000;
-          border-radius: 50%; width: 20px; height: 20px; font-size: 0.6rem; font-weight: bold;
-          display: flex; justify-content: center; align-items: center; border: 2px solid #000;
-        }
+        .avatar-circle { width: 60px; height: 60px; border-radius: 50%; background: radial-gradient(circle, #333, #000); border: 3px solid #555; display: flex; justify-content: center; align-items: center; font-size: 2rem; box-shadow: 0 5px 10px rgba(0,0,0,0.6); position: relative; z-index: 10; }
+        .player-info { background: rgba(0,0,0,0.85); border: 1px solid #d4af37; border-radius: 6px; padding: 4px; text-align: center; margin-top: -10px; z-index: 11; width: 110px; }
+        .role-badge { position: absolute; top: -5px; right: -5px; background: #fff; color: #000; border-radius: 50%; width: 20px; height: 20px; font-size: 0.6rem; font-weight: bold; display: flex; justify-content: center; align-items: center; border: 2px solid #000; }
         
-        .slider-input { width: 100%; margin: 10px 0; }
+        .slider-input { width: 100%; margin: 10px 0; -webkit-appearance: none; height: 8px; border-radius: 4px; background: #333; outline: none; }
+        .slider-input::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 24px; height: 24px; border-radius: 50%; background: #d4af37; cursor: pointer; border: 2px solid #fff; }
       `}</style>
 
-      {/* DER POKERTISCH MIT STRIKTEN ABSOLUTEN POSITIONEN */}
+      {/* DER POKERTISCH */}
       <div style={styles.tableLeatherRail}>
         <div style={styles.tableFelt}>
           
           <div style={styles.tableLogo}>ABISINO HOLD'EM</div>
 
-          {/* LOBBY OVERLAY WENN KEINE SPIELER DA SIND */}
           {isWaitingForPlayers && (
             <div style={styles.lobbyOverlay}>
               <h2 style={{ color: '#fff', margin: '0 0 10px 0', fontFamily: "'Oswald', sans-serif" }}>WARTE AUF SPIELER... (1/6)</h2>
-              <p style={{ color: '#aaa', fontSize: '0.9rem', marginBottom: '20px' }}>Das Spiel startet automatisch, sobald ein anderer Account den Tisch betritt.</p>
               <div style={styles.loader}></div>
-              
-              {/* DEV BUTTON */}
-              <button onClick={devAddPlayerAndStart} style={styles.devBtn}>
-                🧪 DEV: Echten Spieler simulieren (Design testen)
-              </button>
+              <button onClick={devAddPlayerAndStart} style={styles.devBtn}>🧪 DEV: Echten Spieler simulieren</button>
             </div>
           )}
 
-          {/* COMMUNITY KARTEN (Exakt in der Mitte fixiert) */}
+          {/* COMMUNITY KARTEN & POT (Pot ist jetzt UNTEN) */}
           {!isWaitingForPlayers && (
             <div style={styles.boardCenter}>
-              <div style={styles.potDisplay}>POT: <span style={{ color: '#00ffcc' }}>{pot.toFixed(2)}</span></div>
               <div style={styles.communityCardsRow}>
                 {[0, 1, 2, 3, 4].map(i => (
                   <div key={i} style={styles.cardPlaceholder}>
@@ -153,25 +192,24 @@ export default function RealMultiplayerHoldem() {
                   </div>
                 ))}
               </div>
+              {/* Pot wurde nach unten verschoben */}
+              <div style={styles.potDisplay}>POT: <span style={{ color: '#00ffcc', marginLeft: '8px' }}>{pot.toFixed(2)}</span></div>
             </div>
           )}
 
-          {/* SPIELER (Fixiert am Rand, Karten überlappen nicht mehr!) */}
+          {/* SPIELER POSITIONIERUNG */}
           {players.map(player => {
-            // Feste Koordinaten für das Oval
             const pos = player.position === 'bottom' 
               ? { bottom: '2%', left: '50%', transform: 'translateX(-50%)' }
-              : { top: '5%', left: '50%', transform: 'translateX(-50%)' };
+              : { top: '3%', left: '50%', transform: 'translateX(-50%)' };
 
-            // Eigene Karten leicht versetzt über dem Spieler
             const cardPos = player.position === 'bottom'
-              ? { top: '-50px', left: '50%', transform: 'translateX(-50%)' } // Karten ÜBER dem Hero
-              : { bottom: '-50px', left: '50%', transform: 'translateX(-50%)' }; // Karten UNTER Gegnern
+              ? { top: '-45px', left: '50%', transform: 'translateX(-50%)' }
+              : { bottom: '-45px', left: '50%', transform: 'translateX(-50%)' };
 
             return (
               <div key={player.id} style={{ position: 'absolute', display: 'flex', flexDirection: 'column', alignItems: 'center', ...pos }}>
                 
-                {/* Die Karten des Spielers */}
                 {player.cards.length > 0 && (
                   <div style={{ position: 'absolute', display: 'flex', gap: '2px', zIndex: 5, ...cardPos }}>
                     {player.cards.map((c, i) => (
@@ -182,14 +220,14 @@ export default function RealMultiplayerHoldem() {
                   </div>
                 )}
                 
-                <div className={`avatar-circle ${player.isTurn ? 'avatar-active' : ''}`}>
+                <div className="avatar-circle">
                   {player.avatar}
-                  <div className="role-badge" style={{ background: player.role === 'BTN' ? '#fff' : player.role === 'BB' ? '#ff3333' : '#d4af37', color: player.role === 'BB' ? '#fff' : '#000' }}>{player.role}</div>
+                  <div className="role-badge" style={{ background: player.role === 'SB' ? '#d4af37' : '#ff3333', color: player.role === 'BB' ? '#fff' : '#000' }}>{player.role}</div>
                 </div>
                 
                 <div className="player-info">
-                  <div style={{ color: '#fff', fontSize: '0.7rem', fontFamily: "'Oswald', sans-serif" }}>{player.name}</div>
-                  <div style={{ color: '#f9d71c', fontSize: '0.8rem', fontFamily: "'Orbitron', monospace", fontWeight: 'bold' }}>{player.balance.toFixed(2)}</div>
+                  <div style={{ color: '#fff', fontSize: '0.75rem', fontFamily: "'Oswald', sans-serif" }}>{player.name}</div>
+                  <div style={{ color: '#f9d71c', fontSize: '0.85rem', fontFamily: "'Orbitron', monospace", fontWeight: 'bold' }}>{player.balance.toFixed(2)}</div>
                 </div>
 
                 {player.currentBet > 0 && (
@@ -206,20 +244,26 @@ export default function RealMultiplayerHoldem() {
 
       {/* KONTROLL-ZENTRUM */}
       <div style={styles.controlPanel}>
-        <div style={styles.statusBar}>{isWaitingForPlayers ? 'LOBBY' : 'DEIN ZUG'}</div>
+        <div style={{
+          ...styles.statusBar,
+          color: phase === 'SHOWDOWN' ? '#f9d71c' : '#fff',
+          animation: phase === 'SHOWDOWN' ? 'glowPulse 2s infinite' : 'none'
+        }}>
+          {phase === 'SHOWDOWN' ? showdownMessage : (isWaitingForPlayers ? 'LOBBY' : 'DEIN ZUG')}
+        </div>
         
         <div style={styles.actionGrid}>
-          <button onClick={() => handleAction('FOLD')} disabled={isWaitingForPlayers || !hero?.isTurn} style={{ ...styles.actionBtn, background: '#444' }}>
+          <button onClick={() => handleAction('FOLD')} disabled={isWaitingForPlayers || phase === 'SHOWDOWN'} style={{ ...styles.actionBtn, background: '#444' }}>
             FOLD
           </button>
-          <button onClick={() => handleAction('CALL')} disabled={isWaitingForPlayers || !hero?.isTurn} style={{ ...styles.actionBtn, background: '#2e7d32' }}>
+          <button onClick={() => handleAction('CALL')} disabled={isWaitingForPlayers || phase === 'SHOWDOWN'} style={{ ...styles.actionBtn, background: '#2e7d32' }}>
             {currentCallAmount > (hero?.currentBet || 0) ? `CALL` : 'CHECK'}
           </button>
           
           <div style={styles.raiseBox}>
             <div style={{ color: '#d4af37', fontWeight: 'bold', fontSize: '0.9rem' }}>RAISE TO: {raiseAmount}</div>
-            <input type="range" min={currentCallAmount * 2} max={hero?.balance || 1000} step={10} value={raiseAmount} onChange={(e) => setRaiseAmount(parseInt(e.target.value))} className="slider-input" disabled={isWaitingForPlayers || !hero?.isTurn} />
-            <button onClick={() => handleAction('RAISE')} disabled={isWaitingForPlayers || !hero?.isTurn} style={{ ...styles.actionBtn, background: '#d32f2f', padding: '10px' }}>
+            <input type="range" min={currentCallAmount * 2 || 10} max={hero?.balance || 1000} step={10} value={raiseAmount} onChange={(e) => setRaiseAmount(parseInt(e.target.value))} className="slider-input" disabled={isWaitingForPlayers || phase === 'SHOWDOWN'} />
+            <button onClick={() => handleAction('RAISE')} disabled={isWaitingForPlayers || phase === 'SHOWDOWN'} style={{ ...styles.actionBtn, background: '#d32f2f', padding: '10px' }}>
               RAISE
             </button>
           </div>
@@ -233,14 +277,14 @@ export default function RealMultiplayerHoldem() {
 
 const styles = {
   casinoRoom: { minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#050505', padding: '10px' },
-  // Höherer Tisch für Mobile, damit alles Platz hat
-  tableLeatherRail: { background: 'linear-gradient(45deg, #2a0800, #4a1500)', padding: '15px', borderRadius: '150px', width: '100%', maxWidth: '600px', height: '550px', display: 'flex', border: '3px solid #111', marginTop: '10px', boxShadow: '0 20px 40px rgba(0,0,0,0.8)' },
+  // Tisch höher gemacht für mehr Platz in der Mitte
+  tableLeatherRail: { background: 'linear-gradient(45deg, #2a0800, #4a1500)', padding: '15px', borderRadius: '150px', width: '100%', maxWidth: '600px', height: '620px', display: 'flex', border: '3px solid #111', marginTop: '10px', boxShadow: '0 20px 40px rgba(0,0,0,0.8)' },
   tableFelt: { background: 'radial-gradient(ellipse at center, #0a4f22 0%, #04240e 100%)', borderRadius: '135px', width: '100%', height: '100%', border: '4px solid #000', position: 'relative', overflow: 'hidden' },
   tableLogo: { position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', opacity: 0.1, fontSize: '3rem', fontFamily: "'Cinzel', serif", color: '#fff', textAlign: 'center', width: '100%', pointerEvents: 'none' },
   
-  // Strikte Zentrierung des Boards!
-  boardCenter: { position: 'absolute', top: '45%', left: '50%', transform: 'translate(-50%, -50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 5, width: '100%' },
-  potDisplay: { background: 'rgba(0,0,0,0.8)', border: '1px solid #d4af37', padding: '4px 15px', borderRadius: '15px', color: '#fff', fontFamily: "'Orbitron', monospace", fontWeight: 'bold', marginBottom: '10px' },
+  boardCenter: { position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 5, width: '100%' },
+  // Pot Display hat jetzt margin-top, damit es UNTER den Karten ist
+  potDisplay: { background: 'rgba(0,0,0,0.8)', border: '1px solid #d4af37', padding: '4px 20px', borderRadius: '15px', color: '#fff', fontFamily: "'Orbitron', monospace", fontWeight: 'bold', marginTop: '15px', fontSize: '1.2rem', boxShadow: '0 5px 10px rgba(0,0,0,0.5)' },
   communityCardsRow: { display: 'flex', gap: '5px' },
   cardPlaceholder: { width: '55px', height: '80px', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: '4px' },
   
@@ -249,9 +293,10 @@ const styles = {
   devBtn: { background: 'transparent', border: '1px solid #d4af37', color: '#d4af37', padding: '8px 15px', borderRadius: '5px', fontSize: '0.8rem', cursor: 'pointer' },
   
   controlPanel: { width: '100%', maxWidth: '600px', background: '#111', borderRadius: '12px', border: '2px solid #333', marginTop: '20px' },
-  statusBar: { background: '#0a0a0a', color: '#fff', textAlign: 'center', padding: '10px', fontFamily: "'Orbitron', monospace', sans-serif", borderBottom: '1px solid #333' },
+  statusBar: { background: '#0a0a0a', textAlign: 'center', padding: '15px', fontFamily: "'Orbitron', monospace', sans-serif", borderBottom: '1px solid #333', fontSize: '1.1rem', minHeight: '50px', display: 'flex', alignItems: 'center', justifyContent: 'center' },
   actionGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr 1.5fr', gap: '10px', padding: '10px' },
   actionBtn: { border: 'none', borderRadius: '6px', color: '#fff', fontFamily: "'Oswald', sans-serif", fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer' },
   raiseBox: { background: '#1a1a1a', padding: '8px', borderRadius: '6px', display: 'flex', flexDirection: 'column' },
   exitLink: { marginTop: '20px', color: '#666', textDecoration: 'none', fontFamily: 'monospace' }
 };
+                  
