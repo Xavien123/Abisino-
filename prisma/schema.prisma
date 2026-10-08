@@ -12,26 +12,6 @@ enum Role {
   PLAYER
 }
 
-model User {
-  id           String   @id @default(uuid())
-  username     String   @unique // Wird im Backend lowercase erzwungen
-  passwordHash String
-  role         Role     @default(PLAYER)
-  
-  // Anti-Multi-Account Protection (Hash aus IP + Browser Fingerprint)
-  deviceHash   String?  @unique 
-  
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  wallet       Wallet?
-  
-  // Relationen für Invites und Audits
-  usedInvite     InviteToken?  @relation("UsedInvite")
-  createdInvites InviteToken[] @relation("CreatedInvites")
-  auditLogs      AuditLog[]
-}
-
 model Wallet {
   id        String   @id @default(uuid())
   userId    String   @unique
