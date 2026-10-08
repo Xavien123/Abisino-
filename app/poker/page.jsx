@@ -1,15 +1,34 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { createClient } from '@supabase/supabase-js';
+
+// Sicherer Standard-Client, der Vercel beim Build nicht zum Absturz bringt
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://platzhalter.supabase.co';
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'platzhalter';
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function RealMultiplayerHoldem() {
+  const [isLoadingData, setIsLoadingData] = useState(true);
+
   const [players, setPlayers] = useState([
-    { id: 'p1', name: 'Du (Hero)', avatar: '🧑‍💼', balance: 1250.00, currentBet: 0, status: 'WAITING', isTurn: false, position: 'bottom', role: 'SB', cards: [] }
+    { 
+      id: 'p1', 
+      name: 'Lade Name...', 
+      avatar: '🧑‍💼', 
+      balance: 0.00,        
+      currentBet: 0, 
+      status: 'WAITING', 
+      isTurn: false, 
+      position: 'bottom', 
+      role: 'SB', 
+      cards: [] 
+    }
   ]);
   
   const [communityCards, setCommunityCards] = useState([]);
   const [pot, setPot] = useState(0);
-  const [phase, setPhase] = useState('LOBBY'); // LOBBY, PREFLOP, FLOP, TURN, RIVER, SHOWDOWN
+  const [phase, setPhase] = useState('LOBBY');
   const [currentCallAmount, setCurrentCallAmount] = useState(50);
   const [raiseAmount, setRaiseAmount] = useState(100);
   const [showdownMessage, setShowdownMessage] = useState('');
@@ -17,12 +36,50 @@ export default function RealMultiplayerHoldem() {
   const hero = players.find(p => p.id === 'p1');
   const isWaitingForPlayers = players.length < 2;
 
-  // 1. Spiel Starten
+  // --- DATENBANK VERKNÜPFUNG ---
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        
+        if (authError || !user) {
+          console.error("Nicht eingeloggt:", authError);
+          setIsLoadingData(false);
+          return;
+        }
+
+        const { data: profile, error: dbError } = await supabase
+          .from('profiles') 
+          .select('username, balance')
+          .eq('id', user.id)
+          .single();
+
+        if (profile) {
+          setPlayers(prev => prev.map(p => {
+            if (p.id === 'p1') {
+              return { ...p, name: profile.username || 'Unbekannt', balance: profile.balance || 0 };
+            }
+            return p;
+          }));
+        }
+      } catch (error) {
+        console.error("Unerwarteter Fehler:", error);
+      } finally {
+        setIsLoadingData(false);
+      }
+    };
+
+    fetchUserData();
+  }, []);
+
   const devAddPlayerAndStart = () => {
-    setPlayers([
-      { id: 'p1', name: 'Du (Hero)', avatar: '🧑‍💼', balance: 1225.00, currentBet: 25, status: 'ACTIVE', isTurn: true, position: 'bottom', role: 'SB', cards: [{ suit: '♠', value: 'A' }, { suit: '♥', value: 'K' }] },
-      { id: 'p2', name: 'RealPlayer_99', avatar: '👤', balance: 1950.00, currentBet: 50, status: 'ACTIVE', isTurn: false, position: 'top', role: 'BB', cards: [{ isHidden: true }, { isHidden: true }] }
-    ]);
+    setPlayers(prev => {
+      const currentHero = prev.find(p => p.id === 'p1');
+      return [
+        { ...currentHero, currentBet: 25, status: 'ACTIVE', isTurn: true, role: 'SB', cards: [{ suit: '♠', value: 'A' }, { suit: '♥', value: 'K' }] },
+        { id: 'p2', name: 'RealPlayer_99', avatar: '👤', balance: 1950.00, currentBet: 50, status: 'ACTIVE', isTurn: false, position: 'top', role: 'BB', cards: [{ isHidden: true }, { isHidden: true }] }
+      ];
+    });
     setPot(75);
     setCurrentCallAmount(50);
     setRaiseAmount(100);
@@ -31,7 +88,6 @@ export default function RealMultiplayerHoldem() {
     setShowdownMessage('');
   };
 
-  // 2. Deine Aktion (Hero)
   const handleAction = (actionType) => {
     let heroCost = 0;
     let targetAmount = currentCallAmount;
@@ -40,97 +96,65 @@ export default function RealMultiplayerHoldem() {
       triggerEarlyWin('p2', 'DU HAST GEPASST. GEGNER GEWINNT.');
       return;
     }
-
-    if (actionType === 'CALL') {
-      heroCost = currentCallAmount - hero.currentBet;
-    } else if (actionType === 'RAISE') {
+    if (actionType === 'CALL') heroCost = currentCallAmount - hero.currentBet;
+    else if (actionType === 'RAISE') {
       heroCost = raiseAmount - hero.currentBet;
       targetAmount = raiseAmount;
       setCurrentCallAmount(raiseAmount);
     }
 
-    // Deinen Einsatz abziehen und zum Pot hinzufügen
     setPot(prev => prev + heroCost);
     setPlayers(prev => prev.map(p => {
       if (p.id === 'p1') return { ...p, balance: p.balance - heroCost, currentBet: p.currentBet + heroCost, isTurn: false };
-      if (p.id === 'p2') return { ...p, isTurn: true }; // Gibt den Zug an den Bot weiter
+      if (p.id === 'p2') return { ...p, isTurn: true };
       return p;
     }));
 
-    // Startet die simulierte Reaktion des Gegners nach kurzer Bedenkzeit
-    setTimeout(() => {
-      botAction(targetAmount);
-    }, 1500);
+    setTimeout(() => { botAction(targetAmount); }, 1500);
   };
 
-  // 3. Gegner Aktion (Bot zahlt nach)
   const botAction = (targetAmount) => {
     setPlayers(prev => {
       const bot = prev.find(p => p.id === 'p2');
       const botCost = targetAmount - bot.currentBet;
-      
-      // Bot zahlt in den Pot ein
       setPot(currentPot => currentPot + botCost);
-      
       return prev.map(p => {
         if (p.id === 'p2') return { ...p, balance: p.balance - botCost, currentBet: p.currentBet + botCost, isTurn: false };
         return p;
       });
     });
-
-    // Tisch läuft weiter zur nächsten Phase
-    setTimeout(() => {
-      advancePhase();
-    }, 1000);
+    setTimeout(() => advancePhase(), 1000);
   };
 
-  // 4. Phasen-Management & Auto-Showdown
   const advancePhase = () => {
     setPhase(prevPhase => {
       if (prevPhase === 'PREFLOP') {
         setCommunityCards([{ suit: '♠', value: '10', isHidden: false }, { suit: '♥', value: 'J', isHidden: false }, { suit: '♦', value: 'Q', isHidden: false }]);
-        giveTurnToHero();
-        return 'FLOP';
+        giveTurnToHero(); return 'FLOP';
       } else if (prevPhase === 'FLOP') {
         setCommunityCards(prev => [...prev, { suit: '♣', value: '2', isHidden: false }]);
-        giveTurnToHero();
-        return 'TURN';
+        giveTurnToHero(); return 'TURN';
       } else if (prevPhase === 'TURN') {
         setCommunityCards(prev => [...prev, { suit: '♠', value: 'A', isHidden: false }]);
-        giveTurnToHero();
-        return 'RIVER';
+        giveTurnToHero(); return 'RIVER';
       } else if (prevPhase === 'RIVER') {
-        triggerAutoShowdown();
-        return 'SHOWDOWN';
+        triggerAutoShowdown(); return 'SHOWDOWN';
       }
       return prevPhase;
     });
   };
 
-  const giveTurnToHero = () => {
-    setPlayers(prev => prev.map(p => p.id === 'p1' ? { ...p, isTurn: true } : p));
-  };
+  const giveTurnToHero = () => setPlayers(prev => prev.map(p => p.id === 'p1' ? { ...p, isTurn: true } : p));
 
-  // 5. Automatischer Showdown
   const triggerAutoShowdown = () => {
-    // 1. Gegnerische Karten aufdecken
     setPlayers(prev => prev.map(p => p.id === 'p2' ? { ...p, cards: [{ suit: '♥', value: 'Q' }, { suit: '♦', value: 'Q' }] } : p));
-
-    // 2. Gewinner automatisch auswerten nach 1 Sekunde
     setTimeout(() => {
-      // Demo-Logik: Hero hat eine Straße (A-K-Q-J-10), Gegner hat ein Set (Q-Q-Q). Straße gewinnt!
       setShowdownMessage(`🎉 AUTOMATISCHER SHOWDOWN: DU GEWINNST MIT EINER STRASSE! 🎉`);
-      
-      // 3. Auszahlung
       setPot(currentPot => {
         setPlayers(prev => prev.map(p => p.id === 'p1' ? { ...p, balance: p.balance + currentPot } : p));
-        return currentPot; // Wird in resetHand genullt
+        return currentPot; 
       });
-
-      // 4. Tisch Reset nach 5 Sekunden
-      setTimeout(() => {
-        resetHand();
-      }, 5000);
+      setTimeout(() => resetHand(), 5000);
     }, 1000);
   };
 
@@ -144,34 +168,21 @@ export default function RealMultiplayerHoldem() {
     setTimeout(() => resetHand(), 3500);
   };
 
-  // 6. Tisch Reset für nächste Hand
   const resetHand = () => {
-    setPlayers(prev => prev.map(p => {
-      return { 
-        ...p, 
-        currentBet: 0, 
-        isTurn: p.id === 'p1',
-        // Neue frische Karten für die Test-Runde
-        cards: p.id === 'p1' ? [{ suit: '♦', value: '8' }, { suit: '♠', value: '8' }] : [{ isHidden: true }, { isHidden: true }]
-      };
-    }));
-    setPot(0);
-    setCommunityCards([]);
-    setCurrentCallAmount(0);
-    setPhase('PREFLOP');
-    setShowdownMessage('');
+    setPlayers(prev => prev.map(p => ({ 
+      ...p, currentBet: 0, isTurn: p.id === 'p1',
+      cards: p.id === 'p1' ? [{ suit: '♦', value: '8' }, { suit: '♠', value: '8' }] : [{ isHidden: true }, { isHidden: true }]
+    })));
+    setPot(0); setCommunityCards([]); setCurrentCallAmount(0); setPhase('PREFLOP'); setShowdownMessage('');
   };
 
   const Card = ({ card, size = 'normal', delay = 0 }) => {
     if (!card) return null;
     const isRed = card.suit === '♥' || card.suit === '♦';
     const dims = size === 'small' ? { w: '40px', h: '60px', fs: '0.9rem', mfs: '1.2rem' } : { w: '55px', h: '80px', fs: '1.1rem', mfs: '1.8rem' };
-    
     return (
       <div className={`poker-card ${card.isHidden ? 'hidden' : 'visible'}`} style={{ width: dims.w, height: dims.h, animationDelay: `${delay}s` }}>
-        {card.isHidden ? (
-          <div className="card-back-pattern"></div>
-        ) : (
+        {card.isHidden ? <div className="card-back-pattern"></div> : (
           <div className="card-front" style={{ color: isRed ? '#d32f2f' : '#111' }}>
             <div style={{ fontSize: dims.fs, position: 'absolute', top: '2px', left: '4px' }}>{card.value}</div>
             <div style={{ fontSize: dims.mfs, position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>{card.suit}</div>
@@ -181,6 +192,10 @@ export default function RealMultiplayerHoldem() {
       </div>
     );
   };
+
+  if (isLoadingData) {
+    return <div style={{ minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#050505', color: '#d4af37', fontFamily: 'monospace' }}>VERBINDE MIT DATENBANK...</div>;
+  }
 
   return (
     <div style={styles.casinoRoom}>
@@ -195,18 +210,15 @@ export default function RealMultiplayerHoldem() {
 
         .avatar-circle { width: 60px; height: 60px; border-radius: 50%; background: radial-gradient(circle, #333, #000); border: 3px solid #555; display: flex; justify-content: center; align-items: center; font-size: 2rem; box-shadow: 0 5px 10px rgba(0,0,0,0.6); position: relative; z-index: 10; transition: all 0.3s; }
         .avatar-active { border-color: #00ffcc; box-shadow: 0 0 15px #00ffcc; }
-        .player-info { background: rgba(0,0,0,0.85); border: 1px solid #d4af37; border-radius: 6px; padding: 4px; text-align: center; margin-top: -10px; z-index: 11; width: 110px; }
         .role-badge { position: absolute; top: -5px; right: -5px; background: #fff; color: #000; border-radius: 50%; width: 20px; height: 20px; font-size: 0.6rem; font-weight: bold; display: flex; justify-content: center; align-items: center; border: 2px solid #000; }
         
         .slider-input { width: 100%; margin: 10px 0; -webkit-appearance: none; height: 8px; border-radius: 4px; background: #333; outline: none; }
         .slider-input::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 24px; height: 24px; border-radius: 50%; background: #d4af37; cursor: pointer; border: 2px solid #fff; }
-        
         .pot-flash { animation: potFlash 0.5s ease; }
       `}</style>
 
       <div style={styles.tableLeatherRail}>
         <div style={styles.tableFelt}>
-          
           <div style={styles.tableLogo}>ABISINO HOLD'EM</div>
 
           {isWaitingForPlayers && (
@@ -220,35 +232,26 @@ export default function RealMultiplayerHoldem() {
           {!isWaitingForPlayers && (
             <div style={styles.boardCenter}>
               <div style={styles.communityCardsRow}>
-                {[0, 1, 2, 3, 4].map(i => (
-                  <div key={i} style={styles.cardPlaceholder}>
-                    {communityCards[i] ? <Card card={communityCards[i]} size="normal" delay={i * 0.1} /> : null}
-                  </div>
-                ))}
+                {[0, 1, 2, 3, 4].map(i => <div key={i} style={styles.cardPlaceholder}>{communityCards[i] ? <Card card={communityCards[i]} size="normal" delay={i * 0.1} /> : null}</div>)}
               </div>
               <div style={styles.potDisplay}>POT: <span key={pot} className="pot-flash" style={{ color: '#00ffcc', marginLeft: '8px', display: 'inline-block' }}>{pot.toFixed(2)}</span></div>
             </div>
           )}
 
           {players.map(player => {
-            const pos = player.position === 'bottom' 
-              ? { bottom: '2%', left: '50%', transform: 'translateX(-50%)' }
-              : { top: '3%', left: '50%', transform: 'translateX(-50%)' };
-
-            const cardPos = player.position === 'bottom'
-              ? { top: '-45px', left: '50%', transform: 'translateX(-50%)' }
-              : { bottom: '-45px', left: '50%', transform: 'translateX(-50%)' };
+            const pos = player.position === 'bottom' ? { bottom: '2%', left: '50%', transform: 'translateX(-50%)' } : { top: '3%', left: '50%', transform: 'translateX(-50%)' };
+            const cardPos = player.position === 'bottom' ? { top: '-25px', left: '50%', transform: 'translateX(-50%)' } : { bottom: '-25px', left: '50%', transform: 'translateX(-50%)' };
 
             return (
               <div key={player.id} style={{ position: 'absolute', display: 'flex', flexDirection: 'column', alignItems: 'center', ...pos }}>
                 
+                <div style={{ background: 'rgba(0,0,0,0.85)', border: '1px solid #d4af37', borderRadius: '15px', padding: '2px 12px', marginBottom: '8px', color: '#fff', fontSize: '0.8rem', fontFamily: "'Oswald', sans-serif", zIndex: 12, boxShadow: '0 2px 5px rgba(0,0,0,0.5)', whiteSpace: 'nowrap' }}>
+                  {player.name}
+                </div>
+
                 {player.cards.length > 0 && (
                   <div style={{ position: 'absolute', display: 'flex', gap: '2px', zIndex: 5, ...cardPos }}>
-                    {player.cards.map((c, i) => (
-                      <div key={i} style={{ transform: i === 0 ? 'rotate(-5deg)' : 'rotate(5deg)' }}>
-                        <Card card={c} size="small" delay={i * 0.2} />
-                      </div>
-                    ))}
+                    {player.cards.map((c, i) => <div key={i} style={{ transform: i === 0 ? 'rotate(-15deg)' : 'rotate(15deg)' }}><Card card={c} size="small" delay={i * 0.2} /></div>)}
                   </div>
                 )}
                 
@@ -257,13 +260,12 @@ export default function RealMultiplayerHoldem() {
                   <div className="role-badge" style={{ background: player.role === 'SB' ? '#d4af37' : '#ff3333', color: player.role === 'BB' ? '#fff' : '#000' }}>{player.role}</div>
                 </div>
                 
-                <div className="player-info">
-                  <div style={{ color: '#fff', fontSize: '0.75rem', fontFamily: "'Oswald', sans-serif" }}>{player.name}</div>
-                  <div style={{ color: '#f9d71c', fontSize: '0.85rem', fontFamily: "'Orbitron', monospace", fontWeight: 'bold' }}>{player.balance.toFixed(2)}</div>
+                <div style={{ background: 'rgba(0,0,0,0.9)', padding: '2px 10px', borderRadius: '4px', marginTop: '-5px', zIndex: 11, color: '#f9d71c', fontSize: '0.85rem', fontFamily: "'Orbitron', monospace", fontWeight: 'bold', border: '1px solid #333' }}>
+                  {player.balance.toFixed(2)}
                 </div>
 
                 {player.currentBet > 0 && (
-                  <div style={{ background: 'rgba(0,0,0,0.8)', border: '1px solid #00ffcc', color: '#00ffcc', padding: '2px 8px', borderRadius: '10px', fontSize: '0.7rem', marginTop: '5px', fontWeight: 'bold' }}>
+                  <div style={{ position: 'absolute', top: player.position === 'bottom' ? '-70px' : '90px', background: 'rgba(0,0,0,0.8)', border: '1px solid #00ffcc', color: '#00ffcc', padding: '2px 8px', borderRadius: '10px', fontSize: '0.7rem', fontWeight: 'bold' }}>
                     BET: {player.currentBet}
                   </div>
                 )}
@@ -275,18 +277,12 @@ export default function RealMultiplayerHoldem() {
       </div>
 
       <div style={styles.controlPanel}>
-        <div style={{
-          ...styles.statusBar,
-          color: phase === 'SHOWDOWN' ? '#f9d71c' : '#fff',
-          animation: phase === 'SHOWDOWN' ? 'glowPulse 2s infinite' : 'none'
-        }}>
+        <div style={{ ...styles.statusBar, color: phase === 'SHOWDOWN' ? '#f9d71c' : '#fff', animation: phase === 'SHOWDOWN' ? 'glowPulse 2s infinite' : 'none' }}>
           {phase === 'SHOWDOWN' ? showdownMessage : (isWaitingForPlayers ? 'LOBBY' : (hero?.isTurn ? 'DEIN ZUG' : 'GEGNER ZIEHT...'))}
         </div>
         
         <div style={styles.actionGrid}>
-          <button onClick={() => handleAction('FOLD')} disabled={isWaitingForPlayers || phase === 'SHOWDOWN' || !hero?.isTurn} style={{ ...styles.actionBtn, background: '#444', opacity: hero?.isTurn ? 1 : 0.5 }}>
-            FOLD
-          </button>
+          <button onClick={() => handleAction('FOLD')} disabled={isWaitingForPlayers || phase === 'SHOWDOWN' || !hero?.isTurn} style={{ ...styles.actionBtn, background: '#444', opacity: hero?.isTurn ? 1 : 0.5 }}>FOLD</button>
           <button onClick={() => handleAction('CALL')} disabled={isWaitingForPlayers || phase === 'SHOWDOWN' || !hero?.isTurn} style={{ ...styles.actionBtn, background: '#2e7d32', opacity: hero?.isTurn ? 1 : 0.5 }}>
             {currentCallAmount > (hero?.currentBet || 0) ? `CALL` : 'CHECK'}
           </button>
@@ -294,9 +290,7 @@ export default function RealMultiplayerHoldem() {
           <div style={{...styles.raiseBox, opacity: hero?.isTurn ? 1 : 0.5}}>
             <div style={{ color: '#d4af37', fontWeight: 'bold', fontSize: '0.9rem' }}>RAISE TO: {raiseAmount}</div>
             <input type="range" min={currentCallAmount * 2 || 10} max={hero?.balance || 1000} step={10} value={raiseAmount} onChange={(e) => setRaiseAmount(parseInt(e.target.value))} className="slider-input" disabled={isWaitingForPlayers || phase === 'SHOWDOWN' || !hero?.isTurn} />
-            <button onClick={() => handleAction('RAISE')} disabled={isWaitingForPlayers || phase === 'SHOWDOWN' || !hero?.isTurn} style={{ ...styles.actionBtn, background: '#d32f2f', padding: '10px' }}>
-              RAISE
-            </button>
+            <button onClick={() => handleAction('RAISE')} disabled={isWaitingForPlayers || phase === 'SHOWDOWN' || !hero?.isTurn} style={{ ...styles.actionBtn, background: '#d32f2f', padding: '10px' }}>RAISE</button>
           </div>
         </div>
       </div>
@@ -328,3 +322,4 @@ const styles = {
   raiseBox: { background: '#1a1a1a', padding: '8px', borderRadius: '6px', display: 'flex', flexDirection: 'column', transition: 'opacity 0.2s' },
   exitLink: { marginTop: '20px', color: '#666', textDecoration: 'none', fontFamily: 'monospace' }
 };
+              
