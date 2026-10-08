@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
-import nodemailer from 'nodemailer';
 
 const prisma = new PrismaClient();
 
@@ -19,6 +18,7 @@ export async function POST(request) {
 
     const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
 
+    // Nutzer in der Datenbank erstellen
     const newUser = await prisma.user.create({
       data: {
         email,
@@ -28,30 +28,12 @@ export async function POST(request) {
       }
     });
 
-    // HIER IST DIE ÄNDERUNG: Explizite Daten, damit Render nicht blockiert
-    const transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-    });
+    // E-MAIL-VERSAND IST HIER FÜR DEN TEST DEAKTIVIERT
 
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: 'Dein Abisino VIP-Code',
-      text: `Hallo ${name},\n\ndein 6-stelliger VIP-Code lautet: ${verificationCode}\n\nViel Spaß im Casino!`,
-      html: `<p>Hallo ${name},</p><p>dein 6-stelliger VIP-Code lautet: <strong>${verificationCode}</strong></p><p>Viel Spaß im Casino!</p>`
-    });
-
-    return NextResponse.json({ success: true, message: 'Account erstellt' }, { status: 201 });
+    return NextResponse.json({ success: true, message: 'Account erstellt (Ohne E-Mail)' }, { status: 201 });
     
   } catch (error) {
-    // Falls es nochmal hakt, gibt es jetzt sofort eine Fehlermeldung statt ewigem Laden!
     console.error(error);
-    return NextResponse.json({ error: 'Fehler beim E-Mail-Versand.' }, { status: 500 });
+    return NextResponse.json({ error: 'Ein Fehler ist aufgetreten.' }, { status: 500 });
   }
 }
