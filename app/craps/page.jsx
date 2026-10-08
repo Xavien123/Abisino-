@@ -1,318 +1,230 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-// Supabase Client importieren (Passe den Pfad an, falls dein Client woanders liegt)
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'; 
 
-export default function RealMultiplayerHoldem() {
-  const supabase = createClientComponentClient();
+export default function PremiumJumpingDice() {
+  const [balance, setBalance] = useState(1250.00);
+  const [betAmount, setBetAmount] = useState(10.00);
+  const [multiplier, setMultiplier] = useState(2.0); 
   
-  // Ladezustand für die Datenbank-Abfrage
-  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [phase, setPhase] = useState('IDLE'); 
+  const [dicePosition, setDicePosition] = useState('center'); 
+  const [diceRotation, setDiceRotation] = useState({ x: 15, y: 15, z: 0 });
+  const [message, setMessage] = useState('WÄHLE EINSATZ & MULTIPLIKATOR');
+  const [winStatus, setWinStatus] = useState(null);
 
-  const [players, setPlayers] = useState([
-    { 
-      id: 'p1', 
-      name: 'Lade Name...', // Wird durch Datenbank ersetzt
-      avatar: '🧑‍💼', 
-      balance: 0.00,        // Wird durch Datenbank ersetzt
-      currentBet: 0, 
-      status: 'WAITING', 
-      isTurn: false, 
-      position: 'bottom', 
-      role: 'SB', 
-      cards: [] 
-    }
-  ]);
-  
-  const [communityCards, setCommunityCards] = useState([]);
-  const [pot, setPot] = useState(0);
-  const [phase, setPhase] = useState('LOBBY');
-  const [currentCallAmount, setCurrentCallAmount] = useState(50);
-  const [raiseAmount, setRaiseAmount] = useState(100);
-  const [showdownMessage, setShowdownMessage] = useState('');
-  
-  const hero = players.find(p => p.id === 'p1');
-  const isWaitingForPlayers = players.length < 2;
+  // Ref zum Aufräumen der Animation (verhindert Memory Leaks)
+  const rollIntervalRef = useRef(null);
+  const timeoutRef = useRef(null);
 
-  // --- DATENBANK VERKNÜPFUNG ---
+  const winChance = Math.max(1, Math.min(95, (95 / multiplier)));
+
+  // Beim Verlassen der Seite Animationen stoppen
   useEffect(() => {
-    const fetchUserData = async () => {
-      try {
-        // 1. Aktuell eingeloggten User abrufen
-        const { data: { user }, error: authError } = await supabase.auth.getUser();
-        
-        if (authError || !user) {
-          console.error("Nicht eingeloggt:", authError);
-          return;
-        }
-
-        // 2. Echtes Profil aus deiner Datenbank abfragen
-        // WICHTIG: Passe 'profiles' an den Namen deiner Tabelle an!
-        const { data: profile, error: dbError } = await supabase
-          .from('profiles') 
-          .select('username, balance')
-          .eq('id', user.id)
-          .single();
-
-        if (dbError) {
-          console.error("Fehler beim Laden des Profils:", dbError);
-        } else if (profile) {
-          // 3. Echten Namen und echtes Guthaben in den Tisch laden
-          setPlayers(prev => prev.map(p => {
-            if (p.id === 'p1') {
-              return { 
-                ...p, 
-                name: profile.username || 'Unbekannt', 
-                balance: profile.balance || 0 
-              };
-            }
-            return p;
-          }));
-        }
-      } catch (error) {
-        console.error("Unerwarteter Fehler:", error);
-      } finally {
-        setIsLoadingData(false);
-      }
+    return () => {
+      if (rollIntervalRef.current) clearInterval(rollIntervalRef.current);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
+  }, []);
 
-    fetchUserData();
-  }, [supabase]);
+  // Verhindert den Absturz, wenn Balance unter 1 fällt
+  const maxBet = Math.max(1, Math.min(balance, 1000));
 
-  // DEV-Funktion: Startet einen simulierten Tisch (Jetzt mit deinen ECHTEN Daten)
-  const devAddPlayerAndStart = () => {
-    setPlayers(prev => {
-      const currentHero = prev.find(p => p.id === 'p1');
-      return [
-        { ...currentHero, currentBet: 25, status: 'ACTIVE', isTurn: true, role: 'SB', cards: [{ suit: '♠', value: 'A' }, { suit: '♥', value: 'K' }] },
-        { id: 'p2', name: 'RealPlayer_99', avatar: '👤', balance: 1950.00, currentBet: 50, status: 'ACTIVE', isTurn: false, position: 'top', role: 'BB', cards: [{ isHidden: true }, { isHidden: true }] }
-      ];
-    });
-    setPot(75);
-    setCurrentCallAmount(50);
-    setRaiseAmount(100);
-    setCommunityCards([]);
-    setPhase('PREFLOP');
-    setShowdownMessage('');
-  };
+  // Stellt sicher, dass der BetAmount nie höher als die Balance ist
+  useEffect(() => {
+    if (balance > 0 && betAmount > balance) {
+      setBetAmount(balance);
+    }
+  }, [balance, betAmount]);
 
-  // Die restliche Spiel-Logik bleibt identisch
-  const handleAction = (actionType) => {
-    let heroCost = 0;
-    let targetAmount = currentCallAmount;
-
-    if (actionType === 'FOLD') {
-      triggerEarlyWin('p2', 'DU HAST GEPASST. GEGNER GEWINNT.');
+  const rollDice = () => {
+    if (phase === 'ROLLING') return;
+    if (balance < betAmount || balance <= 0) {
+      setMessage('⚠️ GUTHABEN ZU NIEDRIG ⚠️');
+      setWinStatus('loss');
       return;
     }
-    if (actionType === 'CALL') heroCost = currentCallAmount - hero.currentBet;
-    else if (actionType === 'RAISE') {
-      heroCost = raiseAmount - hero.currentBet;
-      targetAmount = raiseAmount;
-      setCurrentCallAmount(raiseAmount);
-    }
 
-    setPot(prev => prev + heroCost);
-    setPlayers(prev => prev.map(p => {
-      if (p.id === 'p1') return { ...p, balance: p.balance - heroCost, currentBet: p.currentBet + heroCost, isTurn: false };
-      if (p.id === 'p2') return { ...p, isTurn: true };
-      return p;
-    }));
+    setBalance(prev => prev - betAmount);
+    setPhase('ROLLING');
+    setWinStatus(null);
+    setMessage('WÜRFEL FLIEGT...');
 
-    setTimeout(() => { botAction(targetAmount); }, 1500);
-  };
+    const rollValue = Math.random() * 100; 
+    const isWin = rollValue <= winChance;
 
-  const botAction = (targetAmount) => {
-    setPlayers(prev => {
-      const bot = prev.find(p => p.id === 'p2');
-      const botCost = targetAmount - bot.currentBet;
-      setPot(currentPot => currentPot + botCost);
-      return prev.map(p => {
-        if (p.id === 'p2') return { ...p, balance: p.balance - botCost, currentBet: p.currentBet + botCost, isTurn: false };
-        return p;
+    // Würfel-Animation starten
+    rollIntervalRef.current = setInterval(() => {
+      setDiceRotation({
+        x: Math.floor(Math.random() * 360),
+        y: Math.floor(Math.random() * 360),
+        z: Math.floor(Math.random() * 360)
       });
-    });
-    setTimeout(() => advancePhase(), 1000);
-  };
+      setDicePosition(Math.random() > 0.5 ? 'left' : 'right');
+    }, 300);
 
-  const advancePhase = () => {
-    setPhase(prevPhase => {
-      if (prevPhase === 'PREFLOP') {
-        setCommunityCards([{ suit: '♠', value: '10', isHidden: false }, { suit: '♥', value: 'J', isHidden: false }, { suit: '♦', value: 'Q', isHidden: false }]);
-        giveTurnToHero(); return 'FLOP';
-      } else if (prevPhase === 'FLOP') {
-        setCommunityCards(prev => [...prev, { suit: '♣', value: '2', isHidden: false }]);
-        giveTurnToHero(); return 'TURN';
-      } else if (prevPhase === 'TURN') {
-        setCommunityCards(prev => [...prev, { suit: '♠', value: 'A', isHidden: false }]);
-        giveTurnToHero(); return 'RIVER';
-      } else if (prevPhase === 'RIVER') {
-        triggerAutoShowdown(); return 'SHOWDOWN';
-      }
-      return prevPhase;
-    });
-  };
-
-  const giveTurnToHero = () => setPlayers(prev => prev.map(p => p.id === 'p1' ? { ...p, isTurn: true } : p));
-
-  const triggerAutoShowdown = () => {
-    setPlayers(prev => prev.map(p => p.id === 'p2' ? { ...p, cards: [{ suit: '♥', value: 'Q' }, { suit: '♦', value: 'Q' }] } : p));
-    setTimeout(() => {
-      setShowdownMessage(`🎉 AUTOMATISCHER SHOWDOWN: DU GEWINNST MIT EINER STRASSE! 🎉`);
-      setPot(currentPot => {
-        setPlayers(prev => prev.map(p => p.id === 'p1' ? { ...p, balance: p.balance + currentPot } : p));
-        return currentPot; 
-      });
+    // Landung nach 2.5 Sekunden
+    timeoutRef.current = setTimeout(() => {
+      clearInterval(rollIntervalRef.current);
       
-      // ACHTUNG: Hier speichern wir später den neuen Kontostand in Supabase ab!
-      // await supabase.from('profiles').update({ balance: newBalance }).eq('id', user.id);
+      setDicePosition(isWin ? 'green' : 'red');
+      
+      const finalFaces = [
+        { x: 0, y: 0, z: 0 }, { x: 0, y: -90, z: 0 }, { x: 0, y: 180, z: 0 },
+        { x: 0, y: 90, z: 0 }, { x: -90, y: 0, z: 0 }, { x: 90, y: 0, z: 0 }
+      ];
+      setDiceRotation(finalFaces[Math.floor(Math.random() * finalFaces.length)]);
+      
+      setPhase('RESULT');
 
-      setTimeout(() => resetHand(), 5000);
-    }, 1000);
+      if (isWin) {
+        const winAmount = betAmount * multiplier;
+        setBalance(prev => prev + winAmount);
+        setWinStatus('win');
+        setMessage(`🎉 BINGO! +${winAmount.toFixed(2)} AC 🎉`);
+      } else {
+        setWinStatus('loss');
+        setMessage('💥 VERLOREN 💥');
+      }
+
+      // Reset nach 3 Sekunden
+      setTimeout(() => {
+        setDicePosition('center');
+        setPhase('IDLE');
+        setMessage('BEREIT FÜR DEN NÄCHSTEN WURF');
+        setWinStatus(null);
+      }, 3000);
+
+    }, 2500);
   };
-
-  const triggerEarlyWin = (winnerId, msg) => {
-    setShowdownMessage(msg);
-    setPhase('SHOWDOWN');
-    setPot(currentPot => {
-      setPlayers(prev => prev.map(p => p.id === winnerId ? { ...p, balance: p.balance + currentPot } : p));
-      return currentPot;
-    });
-    setTimeout(() => resetHand(), 3500);
-  };
-
-  const resetHand = () => {
-    setPlayers(prev => prev.map(p => ({ 
-      ...p, currentBet: 0, isTurn: p.id === 'p1',
-      cards: p.id === 'p1' ? [{ suit: '♦', value: '8' }, { suit: '♠', value: '8' }] : [{ isHidden: true }, { isHidden: true }]
-    })));
-    setPot(0); setCommunityCards([]); setCurrentCallAmount(0); setPhase('PREFLOP'); setShowdownMessage('');
-  };
-
-  const Card = ({ card, size = 'normal', delay = 0 }) => {
-    if (!card) return null;
-    const isRed = card.suit === '♥' || card.suit === '♦';
-    const dims = size === 'small' ? { w: '40px', h: '60px', fs: '0.9rem', mfs: '1.2rem' } : { w: '55px', h: '80px', fs: '1.1rem', mfs: '1.8rem' };
-    return (
-      <div className={`poker-card ${card.isHidden ? 'hidden' : 'visible'}`} style={{ width: dims.w, height: dims.h, animationDelay: `${delay}s` }}>
-        {card.isHidden ? <div className="card-back-pattern"></div> : (
-          <div className="card-front" style={{ color: isRed ? '#d32f2f' : '#111' }}>
-            <div style={{ fontSize: dims.fs, position: 'absolute', top: '2px', left: '4px' }}>{card.value}</div>
-            <div style={{ fontSize: dims.mfs, position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>{card.suit}</div>
-            <div style={{ fontSize: dims.fs, position: 'absolute', bottom: '2px', right: '4px', transform: 'rotate(180deg)' }}>{card.value}</div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  // Wartebildschirm während Supabase die Daten lädt
-  if (isLoadingData) {
-    return <div style={{ minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#050505', color: '#d4af37', fontFamily: 'monospace' }}>VERBINDE MIT DATENBANK...</div>;
-  }
 
   return (
     <div style={styles.casinoRoom}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Oswald:wght@400;700&display=swap');
-        @keyframes dropIn { 0% { transform: translateY(-50px) scale(0.8); opacity: 0; } 100% { transform: translateY(0) scale(1); opacity: 1; } }
-        @keyframes glowPulse { 0% { box-shadow: 0 0 15px #d4af37; } 50% { box-shadow: 0 0 30px #f9d71c; } 100% { box-shadow: 0 0 15px #d4af37; } }
-        @keyframes potFlash { 0% { color: #fff; } 50% { color: #00ffcc; text-shadow: 0 0 10px #00ffcc; transform: scale(1.1); } 100% { color: #00ffcc; } }
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Oswald:wght@400;700&display=swap');
 
-        .poker-card { background: #fff; border-radius: 4px; position: relative; box-shadow: 0 4px 8px rgba(0,0,0,0.5); animation: dropIn 0.3s ease-out forwards; font-family: 'Arial', sans-serif; font-weight: 900; border: 1px solid #ddd; }
-        .card-back-pattern { width: 100%; height: 100%; border-radius: 3px; border: 2px solid #fff; background: repeating-linear-gradient(45deg, #0d47a1, #0d47a1 5px, #1565c0 5px, #1565c0 10px); }
-
-        .avatar-circle { width: 60px; height: 60px; border-radius: 50%; background: radial-gradient(circle, #333, #000); border: 3px solid #555; display: flex; justify-content: center; align-items: center; font-size: 2rem; box-shadow: 0 5px 10px rgba(0,0,0,0.6); position: relative; z-index: 10; transition: all 0.3s; }
-        .avatar-active { border-color: #00ffcc; box-shadow: 0 0 15px #00ffcc; }
-        .role-badge { position: absolute; top: -5px; right: -5px; background: #fff; color: #000; border-radius: 50%; width: 20px; height: 20px; font-size: 0.6rem; font-weight: bold; display: flex; justify-content: center; align-items: center; border: 2px solid #000; }
+        .scene { width: 80px; height: 80px; perspective: 600px; z-index: 10; transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94); }
+        .cube { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; transition: transform 0.3s linear; }
+        .cube-face { position: absolute; width: 80px; height: 80px; background: radial-gradient(circle at center, #fff, #e0e0e0); border: 2px solid #ccc; border-radius: 10px; display: flex; justify-content: center; align-items: center; box-shadow: inset 0 0 15px rgba(0,0,0,0.2); }
+        .dot { width: 16px; height: 16px; background: #111; border-radius: 50%; box-shadow: inset 0 3px 5px rgba(0,0,0,0.5); }
         
-        .slider-input { width: 100%; margin: 10px 0; -webkit-appearance: none; height: 8px; border-radius: 4px; background: #333; outline: none; }
-        .slider-input::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 24px; height: 24px; border-radius: 50%; background: #d4af37; cursor: pointer; border: 2px solid #fff; }
-        .pot-flash { animation: potFlash 0.5s ease; }
+        .front  { transform: rotateY(  0deg) translateZ(40px); }
+        .right  { transform: rotateY( 90deg) translateZ(40px); }
+        .back   { transform: rotateY(180deg) translateZ(40px); }
+        .left   { transform: rotateY(-90deg) translateZ(40px); }
+        .top    { transform: rotateX( 90deg) translateZ(40px); }
+        .bottom { transform: rotateX(-90deg) translateZ(40px); }
+
+        .face-2 { justify-content: space-between; padding: 10px; flex-direction: column; align-items: flex-start; }
+        .face-2 .dot:last-child { align-self: flex-end; }
+        .face-3 { justify-content: space-between; padding: 10px; flex-direction: column; align-items: flex-start; }
+        .face-3 .dot:nth-child(2) { align-self: center; }
+        .face-3 .dot:last-child { align-self: flex-end; }
+        .face-4 { padding: 15px; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 15px; }
+        .face-5 { padding: 15px; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 15px; position: relative; }
+        .face-5 .dot:last-child { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+        .face-6 { padding: 10px 15px; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr 1fr; gap: 8px 15px; }
+
+        .zone { transition: all 0.3s; position: relative; overflow: hidden; }
+        .zone::after { content: ''; position: absolute; top: 0; left: -100%; width: 50%; height: 100%; background: linear-gradient(to right, rgba(255,255,255,0) 0%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0) 100%); transform: skewX(-25deg); }
+        .zone-active::after { animation: shine 1.5s infinite; }
+        @keyframes shine { 100% { left: 200%; } }
+
+        .slider { -webkit-appearance: none; width: 100%; height: 6px; border-radius: 3px; background: #333; outline: none; margin: 15px 0; }
+        .slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 24px; height: 24px; border-radius: 50%; background: #d4af37; cursor: pointer; border: 2px solid #fff; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
       `}</style>
 
-      <div style={styles.tableLeatherRail}>
-        <div style={styles.tableFelt}>
-          <div style={styles.tableLogo}>ABISINO HOLD'EM</div>
-
-          {isWaitingForPlayers && (
-            <div style={styles.lobbyOverlay}>
-              <h2 style={{ color: '#fff', margin: '0 0 10px 0', fontFamily: "'Oswald', sans-serif" }}>WARTE AUF SPIELER... (1/6)</h2>
-              <div style={styles.loader}></div>
-              <button onClick={devAddPlayerAndStart} style={styles.devBtn}>🧪 DEV: Starten</button>
-            </div>
-          )}
-
-          {!isWaitingForPlayers && (
-            <div style={styles.boardCenter}>
-              <div style={styles.communityCardsRow}>
-                {[0, 1, 2, 3, 4].map(i => <div key={i} style={styles.cardPlaceholder}>{communityCards[i] ? <Card card={communityCards[i]} size="normal" delay={i * 0.1} /> : null}</div>)}
-              </div>
-              <div style={styles.potDisplay}>POT: <span key={pot} className="pot-flash" style={{ color: '#00ffcc', marginLeft: '8px', display: 'inline-block' }}>{pot.toFixed(2)}</span></div>
-            </div>
-          )}
-
-          {/* NEUES LAYOUT: NAME OBEN, AVATAR MITTE, GUTHABEN UNTEN */}
-          {players.map(player => {
-            const pos = player.position === 'bottom' ? { bottom: '2%', left: '50%', transform: 'translateX(-50%)' } : { top: '3%', left: '50%', transform: 'translateX(-50%)' };
-            const cardPos = player.position === 'bottom' ? { top: '-25px', left: '50%', transform: 'translateX(-50%)' } : { bottom: '-25px', left: '50%', transform: 'translateX(-50%)' };
-
-            return (
-              <div key={player.id} style={{ position: 'absolute', display: 'flex', flexDirection: 'column', alignItems: 'center', ...pos }}>
-                
-                {/* 1. Echte Benutzernamen-Plakette OBEN */}
-                <div style={{ background: 'rgba(0,0,0,0.85)', border: '1px solid #d4af37', borderRadius: '15px', padding: '2px 12px', marginBottom: '8px', color: '#fff', fontSize: '0.8rem', fontFamily: "'Oswald', sans-serif", zIndex: 12, boxShadow: '0 2px 5px rgba(0,0,0,0.5)', whiteSpace: 'nowrap' }}>
-                  {player.name}
-                </div>
-
-                {player.cards.length > 0 && (
-                  <div style={{ position: 'absolute', display: 'flex', gap: '2px', zIndex: 5, ...cardPos }}>
-                    {player.cards.map((c, i) => <div key={i} style={{ transform: i === 0 ? 'rotate(-15deg)' : 'rotate(15deg)' }}><Card card={c} size="small" delay={i * 0.2} /></div>)}
-                  </div>
-                )}
-                
-                {/* 2. Avatar */}
-                <div className={`avatar-circle ${player.isTurn ? 'avatar-active' : ''}`}>
-                  {player.avatar}
-                  <div className="role-badge" style={{ background: player.role === 'SB' ? '#d4af37' : '#ff3333', color: player.role === 'BB' ? '#fff' : '#000' }}>{player.role}</div>
-                </div>
-                
-                {/* 3. Guthaben UNTEN */}
-                <div style={{ background: 'rgba(0,0,0,0.9)', padding: '2px 10px', borderRadius: '4px', marginTop: '-5px', zIndex: 11, color: '#f9d71c', fontSize: '0.85rem', fontFamily: "'Orbitron', monospace", fontWeight: 'bold', border: '1px solid #333' }}>
-                  {player.balance.toFixed(2)}
-                </div>
-
-                {/* Bet-Chip */}
-                {player.currentBet > 0 && (
-                  <div style={{ position: 'absolute', top: player.position === 'bottom' ? '-70px' : '90px', background: 'rgba(0,0,0,0.8)', border: '1px solid #00ffcc', color: '#00ffcc', padding: '2px 8px', borderRadius: '10px', fontSize: '0.7rem', fontWeight: 'bold' }}>
-                    BET: {player.currentBet}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-
+      {/* DASHBOARD & KONTO */}
+      <div style={styles.header}>
+        <div style={styles.logo}>ABISINO DICE</div>
+        <div style={styles.balanceBadge}>
+          <span style={{ fontSize: '0.6rem', color: '#888' }}>CREDITS</span>
+          <span>{balance.toFixed(2)}</span>
         </div>
       </div>
 
-      <div style={styles.controlPanel}>
-        <div style={{ ...styles.statusBar, color: phase === 'SHOWDOWN' ? '#f9d71c' : '#fff', animation: phase === 'SHOWDOWN' ? 'glowPulse 2s infinite' : 'none' }}>
-          {phase === 'SHOWDOWN' ? showdownMessage : (isWaitingForPlayers ? 'LOBBY' : (hero?.isTurn ? 'DEIN ZUG' : 'GEGNER ZIEHT...'))}
-        </div>
+      {/* DAS SPIELFELD */}
+      <div style={styles.arena}>
         
-        <div style={styles.actionGrid}>
-          <button onClick={() => handleAction('FOLD')} disabled={isWaitingForPlayers || phase === 'SHOWDOWN' || !hero?.isTurn} style={{ ...styles.actionBtn, background: '#444', opacity: hero?.isTurn ? 1 : 0.5 }}>FOLD</button>
-          <button onClick={() => handleAction('CALL')} disabled={isWaitingForPlayers || phase === 'SHOWDOWN' || !hero?.isTurn} style={{ ...styles.actionBtn, background: '#2e7d32', opacity: hero?.isTurn ? 1 : 0.5 }}>
-            {currentCallAmount > (hero?.currentBet || 0) ? `CALL` : 'CHECK'}
-          </button>
-          
-          <div style={{...styles.raiseBox, opacity: hero?.isTurn ? 1 : 0.5}}>
-            <div style={{ color: '#d4af37', fontWeight: 'bold', fontSize: '0.9rem' }}>RAISE TO: {raiseAmount}</div>
-            <input type="range" min={currentCallAmount * 2 || 10} max={hero?.balance || 1000} step={10} value={raiseAmount} onChange={(e) => setRaiseAmount(parseInt(e.target.value))} className="slider-input" disabled={isWaitingForPlayers || phase === 'SHOWDOWN' || !hero?.isTurn} />
-            <button onClick={() => handleAction('RAISE')} disabled={isWaitingForPlayers || phase === 'SHOWDOWN' || !hero?.isTurn} style={{ ...styles.actionBtn, background: '#d32f2f', padding: '10px' }}>RAISE</button>
+        <div className={`zone ${winStatus === 'loss' ? 'zone-active' : ''}`} style={{
+          ...styles.lossZone,
+          boxShadow: winStatus === 'loss' ? 'inset 0 0 50px #ff3333, 0 0 30px rgba(255,51,51,0.5)' : 'inset 0 0 20px rgba(0,0,0,0.8)'
+        }}>
+          <div style={styles.zoneText}>VERLUST</div>
+        </div>
+
+        <div className={`zone ${winStatus === 'win' ? 'zone-active' : ''}`} style={{
+          ...styles.winZone,
+          boxShadow: winStatus === 'win' ? 'inset 0 0 50px #00ffcc, 0 0 30px rgba(0,255,204,0.5)' : 'inset 0 0 20px rgba(0,0,0,0.8)'
+        }}>
+          <div style={styles.zoneText}>GEWINN<br/><span style={{ fontSize: '1rem' }}>{multiplier.toFixed(2)}x</span></div>
+        </div>
+
+        <div className="scene" style={{
+          position: 'absolute',
+          top: dicePosition === 'center' ? '40%' : '50%',
+          left: dicePosition === 'center' ? '50%' : dicePosition === 'left' || dicePosition === 'red' ? '25%' : '75%',
+          transform: `translate(-50%, -50%) scale(${dicePosition === 'center' ? 1.5 : 1})`,
+        }}>
+          <div className="cube" style={{ transform: `rotateX(${diceRotation.x}deg) rotateY(${diceRotation.y}deg) rotateZ(${diceRotation.z}deg)` }}>
+            <div className="cube-face front face-1"><div className="dot"></div></div>
+            <div className="cube-face right face-2"><div className="dot"></div><div className="dot"></div></div>
+            <div className="cube-face back face-3"><div className="dot"></div><div className="dot"></div><div className="dot"></div></div>
+            <div className="cube-face left face-4"><div className="dot"></div><div className="dot"></div><div className="dot"></div><div className="dot"></div></div>
+            <div className="cube-face top face-5"><div className="dot"></div><div className="dot"></div><div className="dot"></div><div className="dot"></div><div className="dot"></div></div>
+            <div className="cube-face bottom face-6"><div className="dot"></div><div className="dot"></div><div className="dot"></div><div className="dot"></div><div className="dot"></div><div className="dot"></div></div>
           </div>
         </div>
+
+      </div>
+
+      {/* KONTROLL-PANEL */}
+      <div style={styles.controlPanel}>
+        <div style={{
+          ...styles.statusBar,
+          color: winStatus === 'win' ? '#00ffcc' : winStatus === 'loss' ? '#ff3333' : '#fff'
+        }}>
+          {message}
+        </div>
+
+        <div style={styles.controlsGrid}>
+          <div style={styles.controlBox}>
+            <div style={styles.controlLabel}>EINSATZ (AC)</div>
+            <div style={styles.controlValue}>{betAmount.toFixed(2)}</div>
+            {/* HIER WAR DER ABSTURZ-FEHLER: maxBet ist jetzt immer mindestens 1 */}
+            <input 
+              type="range" min="1" max={maxBet} step="1" 
+              value={betAmount} onChange={(e) => setBetAmount(parseFloat(e.target.value))} 
+              className="slider" disabled={phase !== 'IDLE' || balance <= 0}
+            />
+            <div style={{ display: 'flex', gap: '5px' }}>
+              <button onClick={() => setBetAmount(prev => Math.max(1, prev / 2))} style={styles.halfBtn} disabled={phase !== 'IDLE' || balance <= 0}>1/2</button>
+              <button onClick={() => setBetAmount(prev => Math.min(balance, prev * 2))} style={styles.halfBtn} disabled={phase !== 'IDLE' || balance <= 0}>2X</button>
+            </div>
+          </div>
+
+          <div style={styles.controlBox}>
+            <div style={styles.controlLabel}>MULTIPLIKATOR</div>
+            <div style={{ ...styles.controlValue, color: '#00ffcc' }}>{multiplier.toFixed(2)}x</div>
+            <input 
+              type="range" min="1.1" max="10" step="0.1" 
+              value={multiplier} onChange={(e) => setMultiplier(parseFloat(e.target.value))} 
+              className="slider" disabled={phase !== 'IDLE'}
+            />
+            <div style={{ fontSize: '0.8rem', color: '#888', marginTop: '5px', fontFamily: "'Orbitron', monospace" }}>
+              CHANCE: <span style={{ color: '#fff' }}>{winChance.toFixed(1)}%</span>
+            </div>
+          </div>
+        </div>
+
+        <button 
+          onClick={rollDice} 
+          disabled={phase !== 'IDLE' || balance <= 0} 
+          style={{ ...styles.rollBtn, background: phase !== 'IDLE' || balance <= 0 ? '#444' : 'linear-gradient(to right, #d4af37, #f9d71c)' }}
+        >
+          {phase === 'IDLE' ? (balance > 0 ? `WÜRFELN (GEWINN: ${(betAmount * multiplier).toFixed(2)})` : 'KEIN GUTHABEN') : 'WÜRFELT...'}
+        </button>
+
       </div>
 
       <Link href="/spiele" style={styles.exitLink}>🚪 Lobby</Link>
@@ -321,24 +233,21 @@ export default function RealMultiplayerHoldem() {
 }
 
 const styles = {
-  casinoRoom: { minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#050505', padding: '10px' },
-  tableLeatherRail: { background: 'linear-gradient(45deg, #2a0800, #4a1500)', padding: '15px', borderRadius: '150px', width: '100%', maxWidth: '600px', height: '620px', display: 'flex', border: '3px solid #111', marginTop: '10px', boxShadow: '0 20px 40px rgba(0,0,0,0.8)' },
-  tableFelt: { background: 'radial-gradient(ellipse at center, #0a4f22 0%, #04240e 100%)', borderRadius: '135px', width: '100%', height: '100%', border: '4px solid #000', position: 'relative', overflow: 'hidden' },
-  tableLogo: { position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', opacity: 0.1, fontSize: '3rem', fontFamily: "'Cinzel', serif", color: '#fff', textAlign: 'center', width: '100%', pointerEvents: 'none' },
-  
-  boardCenter: { position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 5, width: '100%' },
-  potDisplay: { background: 'rgba(0,0,0,0.8)', border: '1px solid #d4af37', padding: '4px 20px', borderRadius: '15px', color: '#fff', fontFamily: "'Orbitron', monospace", fontWeight: 'bold', marginTop: '15px', fontSize: '1.2rem', boxShadow: '0 5px 10px rgba(0,0,0,0.5)' },
-  communityCardsRow: { display: 'flex', gap: '5px' },
-  cardPlaceholder: { width: '55px', height: '80px', border: '1px dashed rgba(255,255,255,0.2)', borderRadius: '4px' },
-  
-  lobbyOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 50, textAlign: 'center', padding: '20px' },
-  loader: { width: '40px', height: '40px', border: '4px solid #333', borderTop: '4px solid #d4af37', borderRadius: '50%', animation: 'spin 1s linear infinite', marginBottom: '20px' },
-  devBtn: { background: 'transparent', border: '1px solid #d4af37', color: '#d4af37', padding: '8px 15px', borderRadius: '5px', fontSize: '0.8rem', cursor: 'pointer' },
-  
-  controlPanel: { width: '100%', maxWidth: '600px', background: '#111', borderRadius: '12px', border: '2px solid #333', marginTop: '20px' },
-  statusBar: { background: '#0a0a0a', textAlign: 'center', padding: '15px', fontFamily: "'Orbitron', monospace', sans-serif", borderBottom: '1px solid #333', fontSize: '1.1rem', minHeight: '55px', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  actionGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr 1.5fr', gap: '10px', padding: '10px' },
-  actionBtn: { border: 'none', borderRadius: '6px', color: '#fff', fontFamily: "'Oswald', sans-serif", fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', transition: 'opacity 0.2s' },
-  raiseBox: { background: '#1a1a1a', padding: '8px', borderRadius: '6px', display: 'flex', flexDirection: 'column', transition: 'opacity 0.2s' },
-  exitLink: { marginTop: '20px', color: '#666', textDecoration: 'none', fontFamily: 'monospace' }
+  casinoRoom: { minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#050505', padding: '10px', fontFamily: 'system-ui, sans-serif' },
+  header: { width: '100%', maxWidth: '600px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' },
+  logo: { color: '#d4af37', fontFamily: "'Cinzel', serif", fontSize: '1.5rem', fontWeight: 'bold' },
+  balanceBadge: { background: '#111', border: '1px solid #d4af37', padding: '5px 15px', borderRadius: '8px', color: '#f9d71c', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', fontFamily: "'Orbitron', monospace", fontWeight: 'bold' },
+  arena: { width: '100%', maxWidth: '600px', height: '300px', display: 'flex', borderRadius: '15px', overflow: 'hidden', border: '3px solid #222', position: 'relative', boxShadow: '0 20px 40px rgba(0,0,0,0.8)' },
+  lossZone: { flex: 1, background: 'linear-gradient(135deg, #3a0000, #1a0000)', borderRight: '2px solid #000', display: 'flex', justifyContent: 'center', alignItems: 'flex-end', paddingBottom: '30px' },
+  winZone: { flex: 1, background: 'linear-gradient(135deg, #002a15, #00150a)', display: 'flex', justifyContent: 'center', alignItems: 'flex-end', paddingBottom: '30px' },
+  zoneText: { color: 'rgba(255,255,255,0.2)', fontFamily: "'Oswald', sans-serif", fontSize: '2rem', fontWeight: '900', letterSpacing: '4px', textAlign: 'center', lineHeight: '1.2' },
+  controlPanel: { width: '100%', maxWidth: '600px', background: '#111', borderRadius: '15px', border: '1px solid #333', marginTop: '20px', padding: '15px' },
+  statusBar: { background: '#0a0a0a', textAlign: 'center', padding: '10px', borderRadius: '8px', fontFamily: "'Orbitron', monospace", fontWeight: 'bold', marginBottom: '15px', border: '1px solid #222' },
+  controlsGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' },
+  controlBox: { background: '#1a1a1a', padding: '15px', borderRadius: '8px', border: '1px solid #333', display: 'flex', flexDirection: 'column', alignItems: 'center' },
+  controlLabel: { color: '#888', fontSize: '0.7rem', fontFamily: "'Oswald', sans-serif", letterSpacing: '1px', marginBottom: '5px' },
+  controlValue: { color: '#fff', fontSize: '1.5rem', fontFamily: "'Orbitron', monospace", fontWeight: 'bold' },
+  halfBtn: { flex: 1, background: '#333', border: 'none', color: '#fff', padding: '5px', borderRadius: '4px', fontFamily: 'monospace', cursor: 'pointer' },
+  rollBtn: { width: '100%', padding: '20px', border: 'none', borderRadius: '8px', color: '#000', fontFamily: "'Oswald', sans-serif", fontSize: '1.2rem', fontWeight: '900', letterSpacing: '2px', cursor: 'pointer', boxShadow: '0 5px 15px rgba(0,0,0,0.5)' },
+  exitLink: { marginTop: '25px', color: '#666', textDecoration: 'none', fontFamily: 'monospace', borderBottom: '1px solid #444' }
 };
