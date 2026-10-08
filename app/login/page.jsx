@@ -1,39 +1,70 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation'; // Der "Wegweiser" von Next.js
+import { useRouter } from 'next/navigation';
+// Der Supabase Client für die echte Passwort-Prüfung
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'; 
 
 export default function Login() {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  
   const router = useRouter();
+  const supabase = createClientComponentClient();
 
-  const handleLogin = (e) => {
-    e.preventDefault(); // Verhindert, dass die Seite neu lädt
-    
-    // Hier kommt später die echte Supabase-Passwortprüfung rein.
-    // Für jetzt leiten wir dich direkt zum neuen Automaten weiter, 
-    // damit du das Design testen kannst!
-    
-    router.push('/spiele'); // Leitet dich sofort auf die Spiele-Seite um
+  const handleLogin = async (e) => {
+    e.preventDefault(); // Verhindert das Neuladen der Seite
+    setErrorMsg('');    // Alte Fehlermeldungen löschen
+    setIsLoading(true);
+
+    try {
+      // 1. Echte Anfrage an die Supabase-Datenbank
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email,
+        password: password,
+      });
+
+      // 2. Prüfung: Gab es einen Fehler? (z.B. falsches Passwort)
+      if (error) {
+        setErrorMsg('Zugriff verweigert: E-Mail oder Passwort ist falsch.');
+        setIsLoading(false);
+        return; // Bricht die Funktion hier ab -> Kein Einlass!
+      }
+
+      // 3. Wenn wir hier ankommen, war der Login zu 100% erfolgreich!
+      router.push('/spiele');
+
+    } catch (err) {
+      setErrorMsg('Server-Fehler. Bitte versuche es später noch einmal.');
+      setIsLoading(false);
+    }
   };
 
   return (
-    <div className="main-container">
-      <h1 className="luxury-title" style={{ fontSize: '3rem' }}>VIP Zugang</h1>
-      <p className="luxury-subtitle" style={{ marginBottom: '30px' }}>
+    <div className="main-container" style={styles.container}>
+      <h1 className="luxury-title" style={styles.title}>VIP Zugang</h1>
+      <p className="luxury-subtitle" style={styles.subtitle}>
         Bitte identifiziere dich an der Rezeption.
       </p>
 
-      {/* Das Formular mit der neuen handleLogin Funktion */}
-      <form onSubmit={handleLogin} style={{ background: 'rgba(0, 0, 0, 0.6)', padding: '40px', borderRadius: '8px', border: '1px solid rgba(212, 175, 55, 0.3)', width: '100%', maxWidth: '400px' }}>
+      <form onSubmit={handleLogin} style={styles.formBox}>
         
+        {/* Die rote Fehlermeldung, wenn das Passwort falsch ist */}
+        {errorMsg && (
+          <div style={styles.errorBox}>
+            ⚠️ {errorMsg}
+          </div>
+        )}
+
         <input
-          type="text"
-          placeholder="Benutzername"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          style={{ width: '100%', padding: '15px', marginBottom: '20px', background: '#0a0a0f', border: '1px solid #d4af37', color: '#fff', borderRadius: '4px', outline: 'none' }}
+          type="email"
+          placeholder="E-Mail Adresse"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          style={styles.inputField}
         />
 
         <input
@@ -41,18 +72,107 @@ export default function Login() {
           placeholder="Passwort"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          style={{ width: '100%', padding: '15px', marginBottom: '30px', background: '#0a0a0f', border: '1px solid #d4af37', color: '#fff', borderRadius: '4px', outline: 'none' }}
+          required
+          style={{ ...styles.inputField, marginBottom: '30px' }}
         />
 
-        <button type="submit" className="btn-premium" style={{ width: '100%', border: 'none', cursor: 'pointer' }}>
-          Eintreten
+        <button 
+          type="submit" 
+          disabled={isLoading}
+          style={{ 
+            ...styles.loginBtn, 
+            opacity: isLoading ? 0.7 : 1,
+            cursor: isLoading ? 'not-allowed' : 'pointer'
+          }}
+        >
+          {isLoading ? 'PRÜFE DATEN...' : 'EINTRETEN'}
         </button>
       </form>
 
-      <Link href="/" style={{ color: '#cccccc', marginTop: '40px', textDecoration: 'none', borderBottom: '1px solid #cccccc' }}>
+      <Link href="/" style={styles.backLink}>
         Zurück zum Eingang
       </Link>
     </div>
   );
 }
 
+// ==========================================
+// STYLES FÜR DEN LOGIN
+// ==========================================
+const styles = {
+  container: {
+    minHeight: '100vh',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#050505',
+    backgroundImage: 'radial-gradient(circle at center, #1a1a1a 0%, #000 100%)',
+    fontFamily: 'system-ui, sans-serif',
+    padding: '20px'
+  },
+  title: {
+    fontSize: '3.5rem',
+    fontFamily: "'Orbitron', sans-serif",
+    color: '#d4af37',
+    margin: '0 0 10px 0',
+    textShadow: '0 2px 5px rgba(0,0,0,0.8)'
+  },
+  subtitle: {
+    color: '#aaa',
+    marginBottom: '40px',
+    fontSize: '1.1rem'
+  },
+  formBox: {
+    background: 'rgba(0, 0, 0, 0.8)',
+    padding: '40px',
+    borderRadius: '15px',
+    border: '2px solid rgba(212, 175, 55, 0.3)',
+    width: '100%',
+    maxWidth: '400px',
+    boxShadow: '0 15px 30px rgba(0,0,0,0.9), inset 0 0 20px rgba(212, 175, 55, 0.05)'
+  },
+  errorBox: {
+    background: 'rgba(255, 51, 51, 0.1)',
+    border: '1px solid #ff3333',
+    color: '#ff3333',
+    padding: '10px',
+    borderRadius: '6px',
+    marginBottom: '20px',
+    textAlign: 'center',
+    fontSize: '0.9rem',
+    fontWeight: 'bold'
+  },
+  inputField: {
+    width: '100%',
+    padding: '15px',
+    marginBottom: '20px',
+    background: '#0a0a0f',
+    border: '1px solid #d4af37',
+    color: '#fff',
+    borderRadius: '6px',
+    outline: 'none',
+    fontSize: '1rem',
+    fontFamily: 'monospace'
+  },
+  loginBtn: {
+    width: '100%',
+    padding: '15px',
+    border: 'none',
+    borderRadius: '6px',
+    background: 'linear-gradient(to right, #d4af37, #f9d71c, #d4af37)',
+    color: '#000',
+    fontFamily: "'Oswald', sans-serif",
+    fontSize: '1.2rem',
+    fontWeight: 'bold',
+    letterSpacing: '2px',
+    boxShadow: '0 5px 15px rgba(212, 175, 55, 0.3)'
+  },
+  backLink: {
+    color: '#666',
+    marginTop: '40px',
+    textDecoration: 'none',
+    borderBottom: '1px solid #444',
+    paddingBottom: '5px'
+  }
+};
