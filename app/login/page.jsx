@@ -2,8 +2,11 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-// Der Supabase Client für die echte Passwort-Prüfung
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'; 
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://platzhalter.supabase.co';
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'platzhalter';
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -12,28 +15,25 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   
   const router = useRouter();
-  const supabase = createClientComponentClient();
 
   const handleLogin = async (e) => {
-    e.preventDefault(); // Verhindert das Neuladen der Seite
-    setErrorMsg('');    // Alte Fehlermeldungen löschen
+    e.preventDefault(); 
+    setErrorMsg('');    
     setIsLoading(true);
 
     try {
-      // 1. Echte Anfrage an die Supabase-Datenbank
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email,
         password: password,
       });
 
-      // 2. Prüfung: Gab es einen Fehler? (z.B. falsches Passwort)
       if (error) {
         setErrorMsg('Zugriff verweigert: E-Mail oder Passwort ist falsch.');
         setIsLoading(false);
-        return; // Bricht die Funktion hier ab -> Kein Einlass!
+        return; 
       }
 
-      // 3. Wenn wir hier ankommen, war der Login zu 100% erfolgreich!
+      // Login erfolgreich!
       router.push('/spiele');
 
     } catch (err) {
@@ -50,12 +50,8 @@ export default function Login() {
       </p>
 
       <form onSubmit={handleLogin} style={styles.formBox}>
-        
-        {/* Die rote Fehlermeldung, wenn das Passwort falsch ist */}
         {errorMsg && (
-          <div style={styles.errorBox}>
-            ⚠️ {errorMsg}
-          </div>
+          <div style={styles.errorBox}>⚠️ {errorMsg}</div>
         )}
 
         <input
@@ -96,83 +92,13 @@ export default function Login() {
   );
 }
 
-// ==========================================
-// STYLES FÜR DEN LOGIN
-// ==========================================
 const styles = {
-  container: {
-    minHeight: '100vh',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#050505',
-    backgroundImage: 'radial-gradient(circle at center, #1a1a1a 0%, #000 100%)',
-    fontFamily: 'system-ui, sans-serif',
-    padding: '20px'
-  },
-  title: {
-    fontSize: '3.5rem',
-    fontFamily: "'Orbitron', sans-serif",
-    color: '#d4af37',
-    margin: '0 0 10px 0',
-    textShadow: '0 2px 5px rgba(0,0,0,0.8)'
-  },
-  subtitle: {
-    color: '#aaa',
-    marginBottom: '40px',
-    fontSize: '1.1rem'
-  },
-  formBox: {
-    background: 'rgba(0, 0, 0, 0.8)',
-    padding: '40px',
-    borderRadius: '15px',
-    border: '2px solid rgba(212, 175, 55, 0.3)',
-    width: '100%',
-    maxWidth: '400px',
-    boxShadow: '0 15px 30px rgba(0,0,0,0.9), inset 0 0 20px rgba(212, 175, 55, 0.05)'
-  },
-  errorBox: {
-    background: 'rgba(255, 51, 51, 0.1)',
-    border: '1px solid #ff3333',
-    color: '#ff3333',
-    padding: '10px',
-    borderRadius: '6px',
-    marginBottom: '20px',
-    textAlign: 'center',
-    fontSize: '0.9rem',
-    fontWeight: 'bold'
-  },
-  inputField: {
-    width: '100%',
-    padding: '15px',
-    marginBottom: '20px',
-    background: '#0a0a0f',
-    border: '1px solid #d4af37',
-    color: '#fff',
-    borderRadius: '6px',
-    outline: 'none',
-    fontSize: '1rem',
-    fontFamily: 'monospace'
-  },
-  loginBtn: {
-    width: '100%',
-    padding: '15px',
-    border: 'none',
-    borderRadius: '6px',
-    background: 'linear-gradient(to right, #d4af37, #f9d71c, #d4af37)',
-    color: '#000',
-    fontFamily: "'Oswald', sans-serif",
-    fontSize: '1.2rem',
-    fontWeight: 'bold',
-    letterSpacing: '2px',
-    boxShadow: '0 5px 15px rgba(212, 175, 55, 0.3)'
-  },
-  backLink: {
-    color: '#666',
-    marginTop: '40px',
-    textDecoration: 'none',
-    borderBottom: '1px solid #444',
-    paddingBottom: '5px'
-  }
+  container: { minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#050505', backgroundImage: 'radial-gradient(circle at center, #1a1a1a 0%, #000 100%)', fontFamily: 'system-ui, sans-serif', padding: '20px' },
+  title: { fontSize: '3.5rem', fontFamily: "'Orbitron', sans-serif", color: '#d4af37', margin: '0 0 10px 0', textShadow: '0 2px 5px rgba(0,0,0,0.8)' },
+  subtitle: { color: '#aaa', marginBottom: '40px', fontSize: '1.1rem' },
+  formBox: { background: 'rgba(0, 0, 0, 0.8)', padding: '40px', borderRadius: '15px', border: '2px solid rgba(212, 175, 55, 0.3)', width: '100%', maxWidth: '400px', boxShadow: '0 15px 30px rgba(0,0,0,0.9), inset 0 0 20px rgba(212, 175, 55, 0.05)' },
+  errorBox: { background: 'rgba(255, 51, 51, 0.1)', border: '1px solid #ff3333', color: '#ff3333', padding: '10px', borderRadius: '6px', marginBottom: '20px', textAlign: 'center', fontSize: '0.9rem', fontWeight: 'bold' },
+  inputField: { width: '100%', padding: '15px', marginBottom: '20px', background: '#0a0a0f', border: '1px solid #d4af37', color: '#fff', borderRadius: '6px', outline: 'none', fontSize: '1rem', fontFamily: 'monospace' },
+  loginBtn: { width: '100%', padding: '15px', border: 'none', borderRadius: '6px', background: 'linear-gradient(to right, #d4af37, #f9d71c, #d4af37)', color: '#000', fontFamily: "'Oswald', sans-serif", fontSize: '1.2rem', fontWeight: 'bold', letterSpacing: '2px', boxShadow: '0 5px 15px rgba(212, 175, 55, 0.3)' },
+  backLink: { color: '#666', marginTop: '40px', textDecoration: 'none', borderBottom: '1px solid #444', paddingBottom: '5px' }
 };
